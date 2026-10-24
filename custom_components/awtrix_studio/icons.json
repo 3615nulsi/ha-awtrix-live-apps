@@ -1,0 +1,14 @@
+{
+  "entity": {
+    "switch": {
+      "app": {
+        "default": "mdi:view-carousel"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "service": "mdi:refresh"
+    }
+  }
+}

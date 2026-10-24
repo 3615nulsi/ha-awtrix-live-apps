@@ -1,0 +1,85 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This clock is already configured.",
+      "mqtt_not_configured": "Set up the MQTT integration first: Awtrix Studio talks to the clock through your MQTT broker."
+    },
+    "error": {
+      "invalid_prefix": "Enter the clock's MQTT prefix, without spaces, `#` or `+`."
+    },
+    "step": {
+      "user": {
+        "title": "Add an AWTRIX clock",
+        "description": "Apps are added to the clock afterwards, with the **Add app** button.",
+        "data": {
+          "firmware": "Firmware",
+          "prefix": "MQTT prefix"
+        },
+        "data_description": {
+          "firmware": "Firmware running on the clock.",
+          "prefix": "The prefix set in the clock's MQTT settings, for example `awtrix_1f1b94`."
+        }
+      }
+    }
+  },
+  "config_subentries": {
+    "app": {
+      "entry_type": "App",
+      "initiate_flow": {
+        "user": "Add app",
+        "reconfigure": "Edit app"
+      },
+      "abort": {
+        "reconfigure_successful": "The app has been updated."
+      },
+      "error": {
+        "invalid_app_name": "Use 1 to 32 letters, digits, `-` or `_`.",
+        "app_name_exists": "This clock already has an app with this name.",
+        "invalid_template": "The template could not be rendered: {error}",
+        "invalid_pages": "The template must render a JSON object (one page) or a list of objects (several pages): {error}"
+      },
+      "step": {
+        "app": {
+          "title": "App",
+          "description": "The template renders the app's JSON, exactly as the firmware expects it. Render a list of objects to get several pages that alternate.",
+          "data": {
+            "app_name": "App name",
+            "template": "Template",
+            "page_interval": "Time per page",
+            "cycle_only_on_screen": "Alternate pages only while on screen",
+            "hide_when_empty": "Hide when empty",
+            "lifetime": "Lifetime"
+          },
+          "data_description": {
+            "app_name": "Name of the app on the clock. It cannot be changed later.",
+            "template": "Jinja template rendering a JSON object or a list of JSON objects.",
+            "page_interval": "How long each page stays on screen when the app has several pages.",
+            "cycle_only_on_screen": "Publish only the first page while another app is displayed. Saves most of the MQTT traffic.",
+            "hide_when_empty": "Remove the app from the rotation while the template renders no page.",
+            "lifetime": "If set, the clock removes the app when Home Assistant stops refreshing it (for example while Home Assistant is down). 0 to disable."
+          }
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "app": {
+        "name": "{app_name}"
+      }
+    }
+  },
+  "selector": {
+    "firmware": {
+      "options": {
+        "awtrix3": "AWTRIX 3"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Publishes every app again, for example after changing the clock's settings."
+    }
+  }
+}

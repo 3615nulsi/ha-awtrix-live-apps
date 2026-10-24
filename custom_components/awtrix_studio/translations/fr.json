@@ -1,0 +1,85 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Cette horloge est déjà configurée.",
+      "mqtt_not_configured": "Configurez d'abord l'intégration MQTT : Awtrix Studio communique avec l'horloge via votre broker MQTT."
+    },
+    "error": {
+      "invalid_prefix": "Saisissez le préfixe MQTT de l'horloge, sans espace, `#` ni `+`."
+    },
+    "step": {
+      "user": {
+        "title": "Ajouter une horloge AWTRIX",
+        "description": "Les apps s'ajoutent ensuite à l'horloge avec le bouton **Ajouter une app**.",
+        "data": {
+          "firmware": "Firmware",
+          "prefix": "Préfixe MQTT"
+        },
+        "data_description": {
+          "firmware": "Firmware installé sur l'horloge.",
+          "prefix": "Le préfixe défini dans les réglages MQTT de l'horloge, par exemple `awtrix_1f1b94`."
+        }
+      }
+    }
+  },
+  "config_subentries": {
+    "app": {
+      "entry_type": "App",
+      "initiate_flow": {
+        "user": "Ajouter une app",
+        "reconfigure": "Modifier l'app"
+      },
+      "abort": {
+        "reconfigure_successful": "L'app a été mise à jour."
+      },
+      "error": {
+        "invalid_app_name": "Utilisez 1 à 32 lettres, chiffres, `-` ou `_`.",
+        "app_name_exists": "Cette horloge a déjà une app portant ce nom.",
+        "invalid_template": "Le modèle n'a pas pu être rendu : {error}",
+        "invalid_pages": "Le modèle doit produire un objet JSON (une page) ou une liste d'objets (plusieurs pages) : {error}"
+      },
+      "step": {
+        "app": {
+          "title": "App",
+          "description": "Le modèle produit le JSON de l'app, exactement comme le firmware l'attend. Produisez une liste d'objets pour obtenir plusieurs pages qui alternent.",
+          "data": {
+            "app_name": "Nom de l'app",
+            "template": "Modèle",
+            "page_interval": "Durée par page",
+            "cycle_only_on_screen": "Alterner les pages seulement à l'écran",
+            "hide_when_empty": "Masquer si vide",
+            "lifetime": "Durée de vie"
+          },
+          "data_description": {
+            "app_name": "Nom de l'app sur l'horloge. Il ne pourra plus être modifié.",
+            "template": "Modèle Jinja produisant un objet JSON ou une liste d'objets JSON.",
+            "page_interval": "Durée d'affichage de chaque page quand l'app en a plusieurs.",
+            "cycle_only_on_screen": "Ne publier que la première page quand une autre app est affichée. Économise l'essentiel du trafic MQTT.",
+            "hide_when_empty": "Retirer l'app de la rotation tant que le modèle ne produit aucune page.",
+            "lifetime": "Si renseignée, l'horloge retire l'app quand Home Assistant cesse de la rafraîchir (par exemple quand Home Assistant est arrêté). 0 pour désactiver."
+          }
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "app": {
+        "name": "{app_name}"
+      }
+    }
+  },
+  "selector": {
+    "firmware": {
+      "options": {
+        "awtrix3": "AWTRIX 3"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Rafraîchir",
+      "description": "Republie toutes les apps, par exemple après avoir modifié les réglages de l'horloge."
+    }
+  }
+}
