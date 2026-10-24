@@ -1,6 +1,6 @@
 # Awtrix Studio — note de conception
 
-> Statut : brouillon à valider (v0.2, 24 octobre 2026)
+> Statut : validé, implémenté en v0.1 (AWTRIX 3) — 24 octobre 2026
 
 ## 1. Le problème
 
@@ -92,8 +92,8 @@ Awtrix Studio* :
 | Firmware | AWTRIX 3 | AWTRIX 3 ou AWTRIX NG (§ 4), détecté si possible |
 | Préfixe MQTT | `awtrix_1f1b94` | Préfixe des topics de l'horloge |
 
-L'intégration vérifie que l'horloge répond (topic de statut du firmware) et
-propose les préfixes déjà vus en découverte MQTT quand c'est possible.
+v0.1 : le préfixe est saisi à la main. Plus tard : vérifier que l'horloge
+répond et proposer les préfixes déjà vus en découverte MQTT.
 
 ### 5.2 Une sous-entrée par app
 
