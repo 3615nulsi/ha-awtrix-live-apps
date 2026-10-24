@@ -9,7 +9,7 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryDataWithId
 from homeassistant.const import ATTR_ENTITY_ID, SERVICE_TURN_OFF, SERVICE_TURN_ON
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -153,7 +153,14 @@ async def test_subentry_flow_adds_app(
     )
     assert result["errors"] == {"template": "invalid_pages"}
 
-    bad = {**APP_DATA, "template": "{{ broken"}
+    # Syntax errors are caught by the template selector itself.
+    with pytest.raises(InvalidData):
+        await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {**APP_DATA, "template": "{{ broken"}
+        )
+
+    # Errors that only show up when rendering are caught by the flow.
+    bad = {**APP_DATA, "template": "{{ 'abc' | int }}"}
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], bad
     )

@@ -95,7 +95,10 @@ async def _async_update_listener(
     manager = entry.runtime_data
     for subentry_id in _removed_app_ids(manager, entry):
         app = manager.apps[subentry_id]
-        await app.async_disable(remove=True)
+        # The app's switch may already be gone (and the app stopped) by now,
+        # so remove the app from the clock explicitly.
+        await app.async_disable(remove=False)
+        await app.async_remove_from_clock()
     await hass.config_entries.async_reload(entry.entry_id)
 
 
