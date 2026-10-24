@@ -1,159 +1,96 @@
+<div align="center">
+
 # Awtrix Studio
+
+**Put anything from Home Assistant on your AWTRIX clock, and let it update itself.**
+No automations, no blueprints, no YAML.
+
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=3615nulsi&repository=ha-awtrix-studio&category=integration)
 
 [![Validate](https://github.com/3615nulsi/ha-awtrix-studio/actions/workflows/validate.yml/badge.svg)](https://github.com/3615nulsi/ha-awtrix-studio/actions/workflows/validate.yml)
 [![Tests](https://github.com/3615nulsi/ha-awtrix-studio/actions/workflows/tests.yml/badge.svg)](https://github.com/3615nulsi/ha-awtrix-studio/actions/workflows/tests.yml)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
 
-Custom apps and indicators for your [AWTRIX 3](https://blueforcer.github.io/awtrix3/)
-clock that **live on their own**: describe them once, from a simple form or with a
-Home Assistant template, and they stay up to date on the clock. No automation, no
-blueprint, no `time_pattern`.
+🇫🇷 [Lire en français](README.fr.md)
 
-## Why
+![The Awtrix Studio panel](https://raw.githubusercontent.com/3615nulsi/ha-awtrix-studio/main/docs/images/overview-en.png)
 
-The usual way to show Home Assistant data on an AWTRIX clock is an automation that
-publishes JSON over MQTT, often every few seconds. It works, but every run writes
-to your database: the automation's state, an `automation_triggered` event, and a
-`call_service` event per publication carrying the whole payload. An app that
-alternates two pages every 1.5 seconds runs about 30,000 times a day and can grow
-the recorder database by hundreds of megabytes, slowing down history and
-statistics for the whole house.
+</div>
 
-Awtrix Studio does the same job without any of that:
+## ✨ What you get
 
-- **Simple mode for everyday apps.** Pick an entity, an icon and colors, with
-  optional color thresholds. No template to write.
-- **Template mode for everything else.** The template renders the app's JSON,
-  exactly as AWTRIX expects it. Every firmware feature (`draw`, `icon`,
-  `blinkText`, gradients…) is available as soon as the firmware supports it.
-- **Indicators too.** The three colored indicators get the same treatment.
-- **Publishes only what changes.** Entities used in the template are tracked; an
-  identical render is never sent twice.
-- **Multiple pages built in.** Render a list and the pages alternate, by default
-  only while the app is on screen.
-- **Leaves no trace in the recorder.** No automation runs, no service calls, no
-  entity state changing on every update.
-- **Self-healing.** Apps are sent again when the clock or Home Assistant restarts,
-  or when MQTT reconnects.
+- **A panel in your sidebar** that shows what your clock displays right now, every app with a live thumbnail, and a switch to turn each one on or off.
+- **Apps in a few clicks.** Pick a sensor, an icon and a color. Want the text to turn orange above 25 °C and red above 30 °C? Two fields.
+- **A live preview while you edit**, and a button to try your app on the real clock before saving.
+- **Several pages per app** that alternate on their own, like "next tram" then "the one after".
+- **The three colored indicators** of the clock, driven the same way.
+- **A healthier Home Assistant.** Apps update only when their data changes and leave nothing in your history database. The usual "automation every few seconds" approach can write hundreds of thousands of entries a day.
 
-## Requirements
+## 🚀 Get started in 3 steps
 
-- Home Assistant 2025.8 or newer.
-- The [MQTT integration](https://www.home-assistant.io/integrations/mqtt/), connected
-  to the broker your clock uses.
-- A clock running AWTRIX 3 with MQTT enabled. AWTRIX NG support is planned.
+You need Home Assistant 2025.8 or newer, the [MQTT integration](https://www.home-assistant.io/integrations/mqtt/), and an [AWTRIX 3](https://blueforcer.github.io/awtrix3/) clock (such as the Ulanzi TC001) connected to the same MQTT broker.
 
-## Installation
+1. **Install.** Click the **Open in HACS** button above, then **Download**, and restart Home Assistant.
+   <details><summary>Without the button</summary>
 
-### HACS
+   In HACS, open the ⋮ menu → **Custom repositories**, add `https://github.com/3615nulsi/ha-awtrix-studio` as an **Integration**, then search for **Awtrix Studio** and download it. Or copy `custom_components/awtrix_studio` into your configuration folder by hand.
+   </details>
 
-1. In HACS, open the menu (⋮) → **Custom repositories**.
-2. Add `https://github.com/3615nulsi/ha-awtrix-studio` with the type **Integration**.
-3. Search for **Awtrix Studio**, download it, and restart Home Assistant.
+2. **Add your clock.** Go to **Settings → Devices & services → Add integration → Awtrix Studio**, and enter the clock's MQTT prefix (you'll find it in the clock's MQTT settings, for example `awtrix_1f1b94`).
 
-### Manual
+3. **Create your first app.** Open **Awtrix Studio** in the sidebar, click **Add app**, pick a sensor… and watch it appear on your clock. 🎉
 
-Copy `custom_components/awtrix_studio` into the `custom_components` folder of
-your Home Assistant configuration, then restart Home Assistant.
+## 🖼️ A quick tour
 
-## The panel
+### The overview
 
-Awtrix Studio adds an **Awtrix Studio** entry to the sidebar (for
-administrators):
+The top of the panel mirrors the clock's real screen. Below, each app has its own card with what it currently shows and where it stands: on screen, in the rotation, hidden because there is nothing to show, or turned off.
 
-- **Live mirror** of the clock's real screen, with previous / next app controls.
-  The clock is only asked for its screen while the panel is open.
-- **One card per app** with a live thumbnail of what it shows, its status (on
-  screen, in the rotation, hidden, failing) and its on/off switch.
-- **Indicators** at a glance.
-- **Editor** for simple and template modes with a **live preview**: a simulated
-  screen that updates as you type and alternates pages like the clock, a
-  real-screen tab, the JSON sent for each page, and **Send to the clock to test**
-  (the real content comes back after 15 seconds).
+### Simple mode: no code at all
 
-The simulated preview is an approximation (font, scrolling and effects are
-simplified); the real-screen tab shows the exact result.
+Choose an entity, add a label, an icon and colors, and you're done. The preview updates as you type.
 
-## Setup
+![Simple mode editor](https://raw.githubusercontent.com/3615nulsi/ha-awtrix-studio/main/docs/images/simple-en.png)
 
-1. **Settings → Devices & services → Add integration → Awtrix Studio.**
-2. Pick the firmware and enter the clock's **MQTT prefix**, as set in the clock's
-   MQTT settings (for example `awtrix_1f1b94`).
-3. Open the **Awtrix Studio** panel in the sidebar and add apps and indicators
-   from there. The same can be done from the integration's card with **Add app**
-   or **Add indicator**.
-
-Any app or indicator can be edited later. A simple one can also be **converted to
-template mode**: the form opens with the generated template, ready to be extended.
-
-### Simple apps
-
-| Option | Description |
+| Setting | What it does |
 |---|---|
-| App name | Name of the app on the clock. Letters, digits, `-` and `_`. Cannot be changed later. |
-| Entity | The entity whose state is shown. |
-| Label | Optional text before the value, for example `CO2`. |
-| Icon | LaMetric icon ID (for example `2422`) or the name of an icon file on the clock. |
-| Text color | Default color of the text. |
-| Decimals | Optional rounding of numeric values. |
-| Show the unit | Appends the entity's unit, with no space before `°` and `%`, like Home Assistant. |
-| Hide when the value is 0 | Removes the app from the rotation at zero (solar production at night…). |
-| Thresholds | Up to two values above which the text switches to another color. |
+| **Entity** | The sensor (or any entity) to show. |
+| **Label** | Optional text before the value, like `CO2`. |
+| **Icon** | A [LaMetric icon](https://developer.lametric.com/icons) ID, or the name of an icon stored on the clock. |
+| **Text color** | The default color. |
+| **Decimals** | Round the value, or leave empty to show it as is. |
+| **Show the unit** | Adds `°C`, `%`, `kW`… after the value. |
+| **Hide when the value is 0** | Handy for solar production at night. |
+| **Colors by value** | Up to two thresholds, each with its own color. |
 
-The app always leaves the rotation while the entity is unavailable or unknown.
+The app also leaves the rotation by itself while its entity is unavailable.
 
-For example, a CO2 monitor in green, orange above 800 ppm and red above 1200 ppm
-is three colors and two thresholds: no template needed.
+### Template mode: full control
 
-### Template apps
+For anything more creative (drawings, progress bars, several pages), write a Home Assistant template that produces the clock's JSON. The preview shows each page, alternates them like the clock does, and tells you right away if something is wrong.
 
-| Option | Default | Description |
-|---|---|---|
-| App name | — | Name of the app on the clock (`tram` → `<prefix>/custom/tram`). Letters, digits, `-` and `_`. Cannot be changed later. |
-| Template | — | Jinja template rendering a JSON object (one page) or a list of objects (several pages). |
-| Time per page | 1.5 s | How long each page is shown when the app has several pages. |
-| Alternate pages only while on screen | On | While another app is displayed, only the first page is kept up to date. Saves most of the MQTT traffic. |
-| Hide when empty | On | Removes the app from the clock's rotation while the template renders no page. |
-| Lifetime | 0 (off) | Sets AWTRIX's `lifetime` so the clock drops the app if Home Assistant stops refreshing it. The integration refreshes it in time while running. |
+![Template mode editor](https://raw.githubusercontent.com/3615nulsi/ha-awtrix-studio/main/docs/images/editor-en.png)
 
-## Indicators
+Started in simple mode and want to go further? **Convert to template mode** opens the generated template, ready to be extended.
 
-AWTRIX 3 has three colored indicators on the right edge of the screen: 1 in the
-top corner, 2 in the middle, 3 in the bottom corner.
+### Indicators
 
-- **Simple:** the indicator is lit, with a color and an optional blink or fade,
-  while an entity is in a given state (`on`, `open`, `home`…), and off otherwise.
-- **Template:** the template renders the indicator's JSON: `color` as a hex string
-  or an RGB list, optionally `blink` or `fade` in milliseconds. Render `{}` to turn
-  it off.
+The clock has three small colored lights on the right edge of its screen. Light one up while a door is open, show your solar surplus as a color, signal new mail… In simple mode, it's "lit in this color while this entity is in this state", with an optional blink or fade.
 
-```jinja
-{#- Blue while exporting, green to red while importing. -#}
-{%- set w = states('sensor.grid_power') | float(0) * 1000 -%}
-{%- if w < 0 -%}
-  {"color": [0, 150, {{ (150 + [w | abs, 2000] | min / 2000 * 105) | int }}]}
-{%- elif w <= 500 -%}
-  {"color": [{{ (w / 500 * 255) | int }}, 255, 0]}
-{%- else -%}
-  {"color": [255, {{ (255 - ([w, 3000] | min - 500) / 2500 * 255) | int }}, 0]}
-{%- endif -%}
-```
+## 📝 Template examples
 
-## Writing templates
-
-The template must render **the AWTRIX custom app JSON**. See the
-[AWTRIX 3 API documentation](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications)
-for every available key.
-
-### One page
+<details>
+<summary><b>One page</b></summary>
 
 ```jinja
 {"text": "{{ states('sensor.outdoor_temperature') | round(1) }}°", "icon": "2355"}
 ```
+</details>
 
-### Several pages
+<details>
+<summary><b>Several pages that alternate</b></summary>
 
-Render a list; each object is a page. Using `tojson` keeps the output valid JSON:
+Render a list: each item is a page.
 
 ```jinja
 {{ [
@@ -161,22 +98,23 @@ Render a list; each object is a page. Using `tojson` keeps the output valid JSON
   {"text": states('sensor.outdoor_humidity') ~ "%", "icon": "2423"}
 ] | tojson }}
 ```
+</details>
 
-### Nothing to show
+<details>
+<summary><b>Only when there is something to show</b></summary>
 
-Render `[]` (or `{}`): with **Hide when empty** on, the app leaves the rotation
-until there is something to show again.
+Render `[]` and the app leaves the rotation until there is something again.
 
 ```jinja
 {% set n = states('sensor.unread_mail') | int(0) %}
 {{ ([{"text": n ~ " mails", "icon": "51"}] if n > 0 else []) | tojson }}
 ```
+</details>
 
-### Example: next two trams
+<details>
+<summary><b>The next two trams, with a pixel-drawn badge</b></summary>
 
-Shows the next departure, then the following one, with one or two dots at the
-bottom to tell them apart. The departures come from a sensor such as the one
-provided by [ha-tam-montpellier](https://github.com/3615nulsi/ha-tam-montpellier).
+Shows the next departure, then the following one, with one or two dots at the bottom to tell them apart. The departures come from a sensor such as the one provided by [ha-tam-montpellier](https://github.com/3615nulsi/ha-tam-montpellier).
 
 ```jinja
 {%- set deps = state_attr('sensor.my_stop_next_tram', 'departures') or [] -%}
@@ -195,52 +133,102 @@ provided by [ha-tam-montpellier](https://github.com/3615nulsi/ha-tam-montpellier
 {%- endfor -%}
 {{ ns.pages | tojson }}
 ```
+</details>
 
-With the defaults (1.5 s per page, alternate only on screen, hide when empty), the
-two departures alternate while the app is displayed, and the app disappears at
-night when no tram is scheduled.
+<details>
+<summary><b>An indicator showing your solar surplus</b></summary>
 
-## Entities and services
+Blue while exporting, green to red while importing.
 
-Each app and indicator gets one **switch**. Turning it off removes the app from the
-clock (or turns the indicator off) and keeps its configuration; turning it on brings
-it back. Its state is restored after a restart.
+```jinja
+{%- set w = states('sensor.grid_power') | float(0) * 1000 -%}
+{%- if w < 0 -%}
+  {"color": [0, 150, {{ (150 + [w | abs, 2000] | min / 2000 * 105) | int }}]}
+{%- elif w <= 500 -%}
+  {"color": [{{ (w / 500 * 255) | int }}, 255, 0]}
+{%- else -%}
+  {"color": [255, {{ (255 - ([w, 3000] | min - 500) / 2500 * 255) | int }}, 0]}
+{%- endif -%}
+```
+</details>
 
-There is deliberately no "current page" or "last update" sensor: those would write
-to the database on every page, which is exactly what this integration avoids.
+Every key of the [AWTRIX custom app API](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) works: `text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`, and so on.
 
-| Service | Description |
-|---|---|
-| `awtrix_studio.refresh` | Publishes every enabled app and indicator again. |
+## ❓ FAQ
 
-## How it works
+<details>
+<summary><b>Why not just use an automation?</b></summary>
 
-- Templates are tracked with Home Assistant's template engine; a new render only
-  happens when an entity used by the template changes.
-- Data changes are throttled to at most one publication per second per app.
-- AWTRIX announces the app on screen on `<prefix>/stats/currentApp`; pages only
-  alternate while that is the app.
-- The clock's uptime, read from `<prefix>/stats`, reveals a reboot; the apps are
-  then published again.
-- Publications go straight to the MQTT client, so they create no events.
+You can, and that's how most people do it today. But an automation that refreshes the clock every few seconds runs tens of thousands of times a day, and each run is written to your history database: the automation's state, an event, and a copy of every message sent. Over time, this bloats the database and makes history and energy graphs slow to open. Awtrix Studio sends a message only when what's displayed actually changes, and writes nothing to the database.
+</details>
 
-## Security
+<details>
+<summary><b>Is the preview exactly what the clock shows?</b></summary>
 
-- Everything typed in simple mode is inserted in the generated template as an
-  escaped string, never as code; entity ids, colors and numbers are validated.
-- Names that end up in MQTT topics are restricted to letters, digits, `-` and `_`.
-- The panel and its WebSocket commands are for administrators only, and the panel
-  never inserts HTML: every value is displayed as text.
-- Template mode runs Home Assistant templates, with the same sandbox and rights as
-  any other template.
+The simulated preview is close but simplified (font, scrolling, effects). For the exact result, switch to the **Real screen** tab, or use **Send to the clock to test**.
+</details>
 
-## Supported firmware
+<details>
+<summary><b>Does the screen mirror slow anything down?</b></summary>
 
-| Firmware | Status |
-|---|---|
-| AWTRIX 3 | Supported |
-| AWTRIX NG | Planned. Its API is different, so templates will use NG's own JSON fields. |
+No. The clock is only asked for its screen once per second, and only while the panel is open. Nothing is written to the database.
+</details>
 
-## License
+<details>
+<summary><b>Can I keep my existing automations or blueprints?</b></summary>
 
-[MIT](LICENSE)
+Yes. Awtrix Studio only touches the apps and indicators you create with it, so everything else keeps working.
+</details>
+
+<details>
+<summary><b>Does it work with AWTRIX NG?</b></summary>
+
+Not yet. AWTRIX NG uses a completely different API; support is planned.
+</details>
+
+<details>
+<summary><b>What happens when the clock or Home Assistant restarts?</b></summary>
+
+Apps are sent again automatically, as well as when MQTT reconnects.
+</details>
+
+## 🔒 Security
+
+- Only administrators can see the panel and use its features.
+- Whatever you type in simple mode is always treated as text, never as code. Entities, colors and numbers are checked before use.
+- App names that end up in MQTT topics are limited to letters, digits, `-` and `_`.
+- The panel never inserts raw HTML: everything is displayed as plain text.
+- Template mode runs regular Home Assistant templates, with the same safeguards as anywhere else in Home Assistant.
+
+<details>
+<summary><h2>🛠️ Under the hood</h2></summary>
+
+- Each app's template is tracked by Home Assistant's template engine: it re-renders only when an entity it uses changes.
+- Data changes are throttled to at most one message per second per app.
+- AWTRIX announces the app on screen on `<prefix>/stats/currentApp`; by default, pages only alternate while that's the app being shown.
+- The clock's uptime, read from `<prefix>/stats`, reveals a reboot; apps are then sent again.
+- Messages go straight to the MQTT client: no service calls, no events.
+- Each app and indicator has a **switch** entity: turning it off removes the app from the clock (or turns the indicator off) and keeps its settings. Its state survives restarts.
+- The `awtrix_studio.refresh` action sends every enabled app and indicator again.
+- There is deliberately no "current page" or "last update" sensor: those would write to the database constantly, which is exactly what this integration avoids.
+
+| Template app option | Default | What it does |
+|---|---|---|
+| Time per page | 1.5 s | How long each page stays on screen. |
+| Alternate pages only while on screen | On | Keeps only the first page up to date while another app is shown. |
+| Hide when empty | On | Removes the app from the rotation while there is nothing to show. |
+| Lifetime | 0 (off) | The clock drops the app if Home Assistant stops refreshing it. |
+
+</details>
+
+## 🤝 Contributing
+
+Bug reports, ideas and pull requests are welcome in the [issues](https://github.com/3615nulsi/ha-awtrix-studio/issues). Released under the [MIT license](LICENSE).
+
+---
+
+<div align="center">
+
+Fabriqué à Montpellier avec amour <3
+
+</div>
