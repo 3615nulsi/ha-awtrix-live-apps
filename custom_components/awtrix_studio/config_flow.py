@@ -1,4 +1,4 @@
-"""Config flow: one entry per clock, one subentry per app."""
+"""Config flow: one entry per clock, one subentry per app or indicator."""
 
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ from homeassistant.core import callback
 from homeassistant.exceptions import TemplateError
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    ColorRGBSelector,
+    EntitySelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -34,30 +36,72 @@ from homeassistant.helpers.template import Template
 
 from .const import (
     APP_NAME_PATTERN,
+    CONF_ACTIVE_STATE,
     CONF_APP_NAME,
+    CONF_COLOR,
+    CONF_COLOR_1,
+    CONF_COLOR_2,
     CONF_CYCLE_ONLY_ON_SCREEN,
+    CONF_DECIMALS,
+    CONF_EFFECT,
+    CONF_EFFECT_INTERVAL,
+    CONF_ENTITY_ID,
     CONF_FIRMWARE,
     CONF_HIDE_WHEN_EMPTY,
+    CONF_HIDE_WHEN_ZERO,
+    CONF_ICON,
+    CONF_INDICATOR,
+    CONF_LABEL,
     CONF_LIFETIME,
+    CONF_MODE,
     CONF_PAGE_INTERVAL,
     CONF_PREFIX,
+    CONF_SHOW_UNIT,
     CONF_TEMPLATE,
+    CONF_THRESHOLD_1,
+    CONF_THRESHOLD_2,
+    DEFAULT_ACTIVE_STATE,
+    DEFAULT_COLOR,
     DEFAULT_CYCLE_ONLY_ON_SCREEN,
+    DEFAULT_EFFECT_INTERVAL,
     DEFAULT_HIDE_WHEN_EMPTY,
+    DEFAULT_INDICATOR_COLOR,
     DEFAULT_LIFETIME,
     DEFAULT_PAGE_INTERVAL,
     DEFAULT_PREFIX,
     DOMAIN,
+    EFFECT_NONE,
+    EFFECTS,
     FIRMWARE_AWTRIX3,
+    INDICATORS,
     MAX_LIFETIME,
     MAX_PAGE_INTERVAL,
     MIN_PAGE_INTERVAL,
+    MODE_SIMPLE,
+    MODE_TEMPLATE,
     SUBENTRY_TYPE_APP,
+    SUBENTRY_TYPE_INDICATOR,
 )
 from .drivers import DRIVERS
 from .pages import InvalidPagesError, parse_pages
+from .templates import build_app_template, build_indicator_template
 
 MQTT_DOMAIN = "mqtt"
+
+STARTER_APP_TEMPLATE = """{#- Render a JSON object (one page) or a list of objects
+    (pages that alternate). Any key of the AWTRIX custom app API works. -#}
+{{ [
+  {"text": now().strftime('%H:%M'), "color": "#FFFFFF"},
+  {"text": states('sun.sun'), "color": "#FFB74D"}
+] | tojson }}"""
+
+STARTER_INDICATOR_TEMPLATE = """{#- Render {"color": ...} to light the indicator
+    (optionally with "blink" or "fade" in ms), or {} to turn it off. -#}
+{%- if is_state('sun.sun', 'below_horizon') -%}
+{"color": "#FF8C00", "fade": 2000}
+{%- else -%}
+{}
+{%- endif -%}"""
 
 
 def _normalize_prefix(prefix: str) -> str | None:
@@ -66,6 +110,18 @@ def _normalize_prefix(prefix: str) -> str | None:
     if not prefix or any(char in prefix for char in "#+ "):
         return None
     return prefix
+
+
+def _seconds(minimum: float, maximum: float, step: float) -> NumberSelector:
+    return NumberSelector(
+        NumberSelectorConfig(
+            min=minimum,
+            max=maximum,
+            step=step,
+            unit_of_measurement="s",
+            mode=NumberSelectorMode.BOX,
+        )
+    )
 
 
 class AwtrixStudioConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -120,124 +176,69 @@ class AwtrixStudioConfigFlow(ConfigFlow, domain=DOMAIN):
     def async_get_supported_subentry_types(
         cls, config_entry: ConfigEntry
     ) -> dict[str, type[ConfigSubentryFlow]]:
-        """Apps are subentries of a clock."""
-        return {SUBENTRY_TYPE_APP: AppSubentryFlow}
+        """Apps and indicators are subentries of a clock."""
+        return {
+            SUBENTRY_TYPE_APP: AppSubentryFlow,
+            SUBENTRY_TYPE_INDICATOR: IndicatorSubentryFlow,
+        }
 
 
-class AppSubentryFlow(ConfigSubentryFlow):
-    """Add or edit an app."""
+class _LiveSubentryFlow(ConfigSubentryFlow):
+    """Shared logic: a menu to pick simple or template mode, then a form."""
+
+    # Values to pre-fill the next form with (edit, or conversion to template).
+    _suggested: dict[str, Any] | None = None
 
     @property
     def _is_new(self) -> bool:
         return self.source == "user"
 
+    @property
+    def _current(self) -> dict[str, Any]:
+        return dict(self._get_reconfigure_subentry().data)
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Add an app."""
-        return await self.async_step_app(user_input)
+        """Choose how to describe the new item."""
+        return self.async_show_menu(
+            step_id="user", menu_options=[MODE_SIMPLE, MODE_TEMPLATE]
+        )
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Edit an app."""
-        return await self.async_step_app(user_input)
+        """Edit an item; a simple one can also be turned into a template."""
+        self._suggested = self._current
+        if self._current.get(CONF_MODE) == MODE_SIMPLE:
+            return self.async_show_menu(
+                step_id="reconfigure", menu_options=[MODE_SIMPLE, "convert"]
+            )
+        return await self.async_step_template()
 
-    async def async_step_app(
+    async def async_step_convert(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show and validate the app form."""
-        errors: dict[str, str] = {}
-        placeholders: dict[str, str] = {"error": ""}
+        """Open the generated template in template mode."""
+        current = self._current
+        self._suggested = {**current, CONF_TEMPLATE: self._build_template(current)}
+        return await self.async_step_template()
 
-        if user_input is not None:
-            data = dict(user_input)
-            if self._is_new:
-                name = data[CONF_APP_NAME].strip()
-                data[CONF_APP_NAME] = name
-                if not re.fullmatch(APP_NAME_PATTERN, name):
-                    errors[CONF_APP_NAME] = "invalid_app_name"
-                elif name in self._existing_app_names():
-                    errors[CONF_APP_NAME] = "app_name_exists"
-            else:
-                data[CONF_APP_NAME] = self._get_reconfigure_subentry().data[
-                    CONF_APP_NAME
-                ]
+    # -- to implement ------------------------------------------------------
 
-            if error := self._validate_template(data[CONF_TEMPLATE]):
-                errors[CONF_TEMPLATE] = error[0]
-                placeholders["error"] = error[1]
+    def _build_template(self, data: dict[str, Any]) -> str:
+        raise NotImplementedError
 
-            data[CONF_LIFETIME] = int(data.get(CONF_LIFETIME, DEFAULT_LIFETIME))
+    # -- helpers -----------------------------------------------------------
 
-            if not errors:
-                if self._is_new:
-                    return self.async_create_entry(
-                        title=data[CONF_APP_NAME],
-                        data=data,
-                        unique_id=data[CONF_APP_NAME],
-                    )
-                return self.async_update_and_abort(
-                    self._get_entry(),
-                    self._get_reconfigure_subentry(),
-                    data=data,
-                )
-            suggested: dict[str, Any] | None = user_input
-        elif self._is_new:
-            suggested = None
-        else:
-            suggested = dict(self._get_reconfigure_subentry().data)
-
-        return self.async_show_form(
-            step_id="app",
-            data_schema=self.add_suggested_values_to_schema(self._schema(), suggested),
-            errors=errors,
-            description_placeholders=placeholders,
-        )
-
-    def _schema(self) -> vol.Schema:
-        fields: dict[Any, Any] = {}
-        if self._is_new:
-            fields[vol.Required(CONF_APP_NAME)] = TextSelector()
-        fields.update(
-            {
-                vol.Required(CONF_TEMPLATE): TemplateSelector(),
-                vol.Required(
-                    CONF_PAGE_INTERVAL, default=DEFAULT_PAGE_INTERVAL
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=MIN_PAGE_INTERVAL,
-                        max=MAX_PAGE_INTERVAL,
-                        step=0.1,
-                        unit_of_measurement="s",
-                        mode=NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Required(
-                    CONF_CYCLE_ONLY_ON_SCREEN, default=DEFAULT_CYCLE_ONLY_ON_SCREEN
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_HIDE_WHEN_EMPTY, default=DEFAULT_HIDE_WHEN_EMPTY
-                ): BooleanSelector(),
-                vol.Required(CONF_LIFETIME, default=DEFAULT_LIFETIME): NumberSelector(
-                    NumberSelectorConfig(
-                        min=0,
-                        max=MAX_LIFETIME,
-                        step=1,
-                        unit_of_measurement="s",
-                        mode=NumberSelectorMode.BOX,
-                    )
-                ),
-            }
-        )
-        return vol.Schema(fields)
-
-    def _existing_app_names(self) -> set[str]:
-        return {
-            subentry.data.get(CONF_APP_NAME)
-            for subentry in self._get_entry().subentries.values()
-            if subentry.subentry_type == SUBENTRY_TYPE_APP
-        }
+    def _siblings(self) -> list[dict[str, Any]]:
+        """Data of the other subentries of the same type."""
+        own = None if self._is_new else self._reconfigure_subentry_id
+        return [
+            dict(subentry.data)
+            for subentry_id, subentry in self._get_entry().subentries.items()
+            if subentry.subentry_type == self._subentry_type and subentry_id != own
+        ]
 
     def _validate_template(self, template_str: str) -> tuple[str, str] | None:
         """Render the template once; return (error key, detail) if it fails."""
@@ -252,3 +253,227 @@ class AppSubentryFlow(ConfigSubentryFlow):
         except InvalidPagesError as err:
             return "invalid_pages", str(err)
         return None
+
+    def _show(
+        self,
+        step_id: str,
+        schema: vol.Schema,
+        user_input: dict[str, Any] | None,
+        errors: dict[str, str],
+        placeholders: dict[str, str] | None = None,
+    ) -> SubentryFlowResult:
+        suggested = user_input if user_input is not None else self._suggested
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=self.add_suggested_values_to_schema(schema, suggested),
+            errors=errors,
+            description_placeholders=placeholders or {"error": ""},
+        )
+
+    def _save(
+        self, title: str, unique_id: str, data: dict[str, Any]
+    ) -> SubentryFlowResult:
+        if self._is_new:
+            return self.async_create_entry(title=title, data=data, unique_id=unique_id)
+        return self.async_update_and_abort(
+            self._get_entry(), self._get_reconfigure_subentry(), data=data
+        )
+
+
+class AppSubentryFlow(_LiveSubentryFlow):
+    """Add or edit an app."""
+
+    def _build_template(self, data: dict[str, Any]) -> str:
+        return build_app_template(data)
+
+    def _check_name(self, data: dict[str, Any], errors: dict[str, str]) -> None:
+        if not self._is_new:
+            data[CONF_APP_NAME] = self._current[CONF_APP_NAME]
+            return
+        name = str(data.get(CONF_APP_NAME, "")).strip()
+        data[CONF_APP_NAME] = name
+        if not re.fullmatch(APP_NAME_PATTERN, name):
+            errors[CONF_APP_NAME] = "invalid_app_name"
+        elif any(other.get(CONF_APP_NAME) == name for other in self._siblings()):
+            errors[CONF_APP_NAME] = "app_name_exists"
+
+    def _name_field(self) -> dict[Any, Any]:
+        return {vol.Required(CONF_APP_NAME): TextSelector()} if self._is_new else {}
+
+    async def async_step_simple(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """One entity shown as text, with an icon and colors."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data = {CONF_MODE: MODE_SIMPLE, **user_input}
+            self._check_name(data, errors)
+            for threshold, color in (
+                (CONF_THRESHOLD_1, CONF_COLOR_1),
+                (CONF_THRESHOLD_2, CONF_COLOR_2),
+            ):
+                if data.get(threshold) is not None and not data.get(color):
+                    errors[color] = "color_required"
+            if not errors:
+                return self._save(data[CONF_APP_NAME], data[CONF_APP_NAME], data)
+
+        schema = vol.Schema(
+            {
+                **self._name_field(),
+                vol.Required(CONF_ENTITY_ID): EntitySelector(),
+                vol.Optional(CONF_LABEL): TextSelector(),
+                vol.Optional(CONF_ICON): TextSelector(),
+                vol.Required(CONF_COLOR, default=DEFAULT_COLOR): ColorRGBSelector(),
+                vol.Optional(CONF_DECIMALS): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0, max=4, step=1, mode=NumberSelectorMode.BOX
+                    )
+                ),
+                vol.Required(CONF_SHOW_UNIT, default=True): BooleanSelector(),
+                vol.Required(CONF_HIDE_WHEN_ZERO, default=False): BooleanSelector(),
+                vol.Optional(CONF_THRESHOLD_1): NumberSelector(
+                    NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
+                ),
+                vol.Optional(CONF_COLOR_1): ColorRGBSelector(),
+                vol.Optional(CONF_THRESHOLD_2): NumberSelector(
+                    NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
+                ),
+                vol.Optional(CONF_COLOR_2): ColorRGBSelector(),
+            }
+        )
+        return self._show("simple", schema, user_input, errors)
+
+    async def async_step_template(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """A template rendering the app's JSON, one or several pages."""
+        errors: dict[str, str] = {}
+        placeholders = {"error": ""}
+        if user_input is not None:
+            data = {CONF_MODE: MODE_TEMPLATE, **user_input}
+            self._check_name(data, errors)
+            if error := self._validate_template(data[CONF_TEMPLATE]):
+                errors[CONF_TEMPLATE], placeholders["error"] = error
+            data[CONF_LIFETIME] = int(data.get(CONF_LIFETIME, DEFAULT_LIFETIME))
+            if not errors:
+                return self._save(data[CONF_APP_NAME], data[CONF_APP_NAME], data)
+        elif self._suggested is None:
+            self._suggested = {CONF_TEMPLATE: STARTER_APP_TEMPLATE}
+
+        schema = vol.Schema(
+            {
+                **self._name_field(),
+                vol.Required(CONF_TEMPLATE): TemplateSelector(),
+                vol.Required(
+                    CONF_PAGE_INTERVAL, default=DEFAULT_PAGE_INTERVAL
+                ): _seconds(MIN_PAGE_INTERVAL, MAX_PAGE_INTERVAL, 0.1),
+                vol.Required(
+                    CONF_CYCLE_ONLY_ON_SCREEN, default=DEFAULT_CYCLE_ONLY_ON_SCREEN
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_HIDE_WHEN_EMPTY, default=DEFAULT_HIDE_WHEN_EMPTY
+                ): BooleanSelector(),
+                vol.Required(CONF_LIFETIME, default=DEFAULT_LIFETIME): _seconds(
+                    0, MAX_LIFETIME, 1
+                ),
+            }
+        )
+        return self._show("template", schema, user_input, errors, placeholders)
+
+
+class IndicatorSubentryFlow(_LiveSubentryFlow):
+    """Add or edit one of the clock's three colored indicators."""
+
+    def _build_template(self, data: dict[str, Any]) -> str:
+        return build_indicator_template(data)
+
+    def _check_indicator(self, data: dict[str, Any], errors: dict[str, str]) -> None:
+        if not self._is_new:
+            data[CONF_INDICATOR] = self._current[CONF_INDICATOR]
+            return
+        if any(o.get(CONF_INDICATOR) == data[CONF_INDICATOR] for o in self._siblings()):
+            errors[CONF_INDICATOR] = "indicator_in_use"
+
+    def _indicator_field(self) -> dict[Any, Any]:
+        if not self._is_new:
+            return {}
+        return {
+            vol.Required(CONF_INDICATOR): SelectSelector(
+                SelectSelectorConfig(
+                    options=list(INDICATORS),
+                    translation_key=CONF_INDICATOR,
+                    mode=SelectSelectorMode.LIST,
+                )
+            )
+        }
+
+    def _save_indicator(self, data: dict[str, Any]) -> SubentryFlowResult:
+        number = data[CONF_INDICATOR]
+        return self._save(f"Indicator {number}", f"indicator:{number}", data)
+
+    async def async_step_simple(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Lit with a color while an entity is in a given state."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data = {CONF_MODE: MODE_SIMPLE, **user_input}
+            self._check_indicator(data, errors)
+            if not errors:
+                return self._save_indicator(data)
+
+        schema = vol.Schema(
+            {
+                **self._indicator_field(),
+                vol.Required(CONF_ENTITY_ID): EntitySelector(),
+                vol.Required(
+                    CONF_ACTIVE_STATE, default=DEFAULT_ACTIVE_STATE
+                ): TextSelector(),
+                vol.Required(
+                    CONF_COLOR, default=DEFAULT_INDICATOR_COLOR
+                ): ColorRGBSelector(),
+                vol.Required(CONF_EFFECT, default=EFFECT_NONE): SelectSelector(
+                    SelectSelectorConfig(
+                        options=list(EFFECTS),
+                        translation_key=CONF_EFFECT,
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
+                vol.Required(
+                    CONF_EFFECT_INTERVAL, default=DEFAULT_EFFECT_INTERVAL
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=100,
+                        max=10000,
+                        step=100,
+                        unit_of_measurement="ms",
+                        mode=NumberSelectorMode.BOX,
+                    )
+                ),
+            }
+        )
+        return self._show("simple", schema, user_input, errors)
+
+    async def async_step_template(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """A template rendering the indicator's JSON."""
+        errors: dict[str, str] = {}
+        placeholders = {"error": ""}
+        if user_input is not None:
+            data = {CONF_MODE: MODE_TEMPLATE, **user_input}
+            self._check_indicator(data, errors)
+            if error := self._validate_template(data[CONF_TEMPLATE]):
+                errors[CONF_TEMPLATE], placeholders["error"] = error
+            if not errors:
+                return self._save_indicator(data)
+        elif self._suggested is None:
+            self._suggested = {CONF_TEMPLATE: STARTER_INDICATOR_TEMPLATE}
+
+        schema = vol.Schema(
+            {
+                **self._indicator_field(),
+                vol.Required(CONF_TEMPLATE): TemplateSelector(),
+            }
+        )
+        return self._show("template", schema, user_input, errors, placeholders)

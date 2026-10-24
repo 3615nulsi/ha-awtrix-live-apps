@@ -1,5 +1,7 @@
 """A live app: one template rendered into AWTRIX pages and kept on the clock.
 
+Indicators use the same engine: a single page published to their own topic.
+
 Design rule: nothing in here touches the event bus or entity states. Rendering
 uses template tracking, publishing uses the MQTT client directly, timers use
 the event loop. A live app therefore leaves no trace in the recorder, however
@@ -49,6 +51,7 @@ class AppConfig:
     cycle_only_on_screen: bool
     hide_when_empty: bool
     lifetime: int
+    single_page: bool = False
 
 
 class LiveApp:
@@ -60,13 +63,14 @@ class LiveApp:
         driver: FirmwareDriver,
         config: AppConfig,
         publish: PublishCallback,
+        topic: str | None = None,
     ) -> None:
         """Initialize the app (nothing runs until it is enabled)."""
         self.hass = hass
         self.driver = driver
         self.config = config
         self._publish_cb = publish
-        self._topic = driver.app_topic(config.name)
+        self._topic = topic or driver.app_topic(config.name)
 
         self._enabled = False
         self._on_screen = False
@@ -203,6 +207,8 @@ class LiveApp:
             return
         self._last_error = None
 
+        if self.config.single_page:
+            pages = pages[:1]
         if self.config.lifetime > 0:
             pages = [self.driver.with_lifetime(p, self.config.lifetime) for p in pages]
         self._pages = [serialize_page(p) for p in pages]

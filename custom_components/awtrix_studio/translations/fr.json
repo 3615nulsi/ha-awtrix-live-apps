@@ -35,13 +35,56 @@
       "error": {
         "invalid_app_name": "Utilisez 1 à 32 lettres, chiffres, `-` ou `_`.",
         "app_name_exists": "Cette horloge a déjà une app portant ce nom.",
+        "color_required": "Choisissez la couleur à utiliser au-dessus de ce seuil.",
         "invalid_template": "Le modèle n'a pas pu être rendu : {error}",
         "invalid_pages": "Le modèle doit produire un objet JSON (une page) ou une liste d'objets (plusieurs pages) : {error}"
       },
       "step": {
-        "app": {
-          "title": "App",
-          "description": "Le modèle produit le JSON de l'app, exactement comme le firmware l'attend. Produisez une liste d'objets pour obtenir plusieurs pages qui alternent.",
+        "user": {
+          "title": "Ajouter une app",
+          "description": "Comment voulez-vous décrire l'app ?",
+          "menu_options": {
+            "simple": "Simple : une entité, une icône et des couleurs",
+            "template": "Modèle : contrôle total du JSON AWTRIX, plusieurs pages"
+          }
+        },
+        "reconfigure": {
+          "title": "Modifier l'app",
+          "description": "Cette app utilise le mode simple.",
+          "menu_options": {
+            "simple": "Modifier les réglages",
+            "convert": "Convertir en mode modèle (pour aller plus loin)"
+          }
+        },
+        "simple": {
+          "title": "App simple",
+          "description": "Affiche l'état d'une entité, avec un libellé, une icône et des couleurs si vous le souhaitez. L'app quitte la rotation tant que l'entité est indisponible.",
+          "data": {
+            "app_name": "Nom de l'app",
+            "entity_id": "Entité",
+            "label": "Libellé",
+            "icon": "Icône",
+            "color": "Couleur du texte",
+            "decimals": "Décimales",
+            "show_unit": "Afficher l'unité",
+            "hide_when_zero": "Masquer quand la valeur vaut 0",
+            "threshold_1": "Au-dessus de",
+            "color_1": "Couleur au-dessus du premier seuil",
+            "threshold_2": "Puis au-dessus de",
+            "color_2": "Couleur au-dessus du second seuil"
+          },
+          "data_description": {
+            "app_name": "Nom de l'app sur l'horloge. Il ne pourra plus être modifié.",
+            "label": "Texte affiché avant la valeur, par exemple `CO2`.",
+            "icon": "Identifiant d'icône LaMetric (par exemple `2422`) ou nom d'un fichier d'icône présent sur l'horloge.",
+            "decimals": "Laissez vide pour afficher la valeur telle quelle.",
+            "threshold_1": "Facultatif. Au-dessus de cette valeur, le texte prend la couleur du premier seuil.",
+            "threshold_2": "Facultatif. Au-dessus de cette valeur, le texte prend la couleur du second seuil."
+          }
+        },
+        "template": {
+          "title": "Modèle de l'app",
+          "description": "Le modèle produit le JSON de l'app, exactement comme AWTRIX l'attend. Produisez une liste d'objets pour obtenir plusieurs pages qui alternent.",
           "data": {
             "app_name": "Nom de l'app",
             "template": "Modèle",
@@ -60,12 +103,75 @@
           }
         }
       }
+    },
+    "indicator": {
+      "entry_type": "Indicateur",
+      "initiate_flow": {
+        "user": "Ajouter un indicateur",
+        "reconfigure": "Modifier l'indicateur"
+      },
+      "abort": {
+        "reconfigure_successful": "L'indicateur a été mis à jour."
+      },
+      "error": {
+        "indicator_in_use": "Cet indicateur est déjà configuré.",
+        "invalid_template": "Le modèle n'a pas pu être rendu : {error}",
+        "invalid_pages": "Le modèle doit produire un objet JSON, ou un objet vide pour éteindre l'indicateur : {error}"
+      },
+      "step": {
+        "user": {
+          "title": "Ajouter un indicateur",
+          "description": "Les indicateurs sont les pixels de couleur sur le bord droit de l'écran. Comment voulez-vous piloter celui-ci ?",
+          "menu_options": {
+            "simple": "Simple : allumé tant qu'une entité est dans un état donné",
+            "template": "Modèle : couleur calculée par un modèle"
+          }
+        },
+        "reconfigure": {
+          "title": "Modifier l'indicateur",
+          "description": "Cet indicateur utilise le mode simple.",
+          "menu_options": {
+            "simple": "Modifier les réglages",
+            "convert": "Convertir en mode modèle (pour aller plus loin)"
+          }
+        },
+        "simple": {
+          "title": "Indicateur simple",
+          "description": "L'indicateur s'allume tant que l'entité est dans l'état choisi, et s'éteint sinon.",
+          "data": {
+            "indicator": "Indicateur",
+            "entity_id": "Entité",
+            "active_state": "Allumé quand l'état est",
+            "color": "Couleur",
+            "effect": "Effet",
+            "effect_interval": "Vitesse de l'effet"
+          },
+          "data_description": {
+            "active_state": "Par exemple `on`, `open` ou `home`.",
+            "effect_interval": "Durée d'un cycle de clignotement ou de fondu."
+          }
+        },
+        "template": {
+          "title": "Modèle de l'indicateur",
+          "description": "Le modèle produit le JSON de l'indicateur : `color` (chaîne hexadécimale ou liste RVB), avec éventuellement `blink` ou `fade` en millisecondes. Produisez `{}` pour l'éteindre.",
+          "data": {
+            "indicator": "Indicateur",
+            "template": "Modèle"
+          },
+          "data_description": {
+            "template": "Modèle Jinja produisant un objet JSON."
+          }
+        }
+      }
     }
   },
   "entity": {
     "switch": {
       "app": {
         "name": "{app_name}"
+      },
+      "indicator": {
+        "name": "Indicateur {number}"
       }
     }
   },
@@ -73,6 +179,20 @@
     "firmware": {
       "options": {
         "awtrix3": "AWTRIX 3"
+      }
+    },
+    "indicator": {
+      "options": {
+        "1": "1 (coin supérieur droit)",
+        "2": "2 (bord droit)",
+        "3": "3 (coin inférieur droit)"
+      }
+    },
+    "effect": {
+      "options": {
+        "none": "Fixe",
+        "blink": "Clignotement",
+        "fade": "Fondu"
       }
     }
   },

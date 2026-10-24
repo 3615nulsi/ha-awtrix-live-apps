@@ -4,9 +4,10 @@
 [![Tests](https://github.com/3615nulsi/ha-awtrix-studio/actions/workflows/tests.yml/badge.svg)](https://github.com/3615nulsi/ha-awtrix-studio/actions/workflows/tests.yml)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
 
-Custom apps for your [AWTRIX 3](https://blueforcer.github.io/awtrix3/) clock that
-**live on their own**: describe an app once with a Home Assistant template, and it
-stays up to date on the clock. No automation, no blueprint, no `time_pattern`.
+Custom apps and indicators for your [AWTRIX 3](https://blueforcer.github.io/awtrix3/)
+clock that **live on their own**: describe them once, from a simple form or with a
+Home Assistant template, and they stay up to date on the clock. No automation, no
+blueprint, no `time_pattern`.
 
 ## Why
 
@@ -20,9 +21,12 @@ statistics for the whole house.
 
 Awtrix Studio does the same job without any of that:
 
-- **Template-driven.** The template renders the app's JSON, exactly as AWTRIX
-  expects it. Every firmware feature (`draw`, `icon`, `blinkText`, gradients…) is
-  available as soon as the firmware supports it.
+- **Simple mode for everyday apps.** Pick an entity, an icon and colors, with
+  optional color thresholds. No template to write.
+- **Template mode for everything else.** The template renders the app's JSON,
+  exactly as AWTRIX expects it. Every firmware feature (`draw`, `icon`,
+  `blinkText`, gradients…) is available as soon as the firmware supports it.
+- **Indicators too.** The three colored indicators get the same treatment.
 - **Publishes only what changes.** Entities used in the template are tracked; an
   identical render is never sent twice.
 - **Multiple pages built in.** Render a list and the pages alternate, by default
@@ -57,9 +61,32 @@ your Home Assistant configuration, then restart Home Assistant.
 1. **Settings → Devices & services → Add integration → Awtrix Studio.**
 2. Pick the firmware and enter the clock's **MQTT prefix**, as set in the clock's
    MQTT settings (for example `awtrix_1f1b94`).
-3. On the integration's card, use **Add app** for each app you want on the clock.
+3. On the integration's card, use **Add app** or **Add indicator**, then choose
+   **Simple** or **Template**.
 
-### App options
+Any app or indicator can be edited later. A simple one can also be **converted to
+template mode**: the form opens with the generated template, ready to be extended.
+
+### Simple apps
+
+| Option | Description |
+|---|---|
+| App name | Name of the app on the clock. Letters, digits, `-` and `_`. Cannot be changed later. |
+| Entity | The entity whose state is shown. |
+| Label | Optional text before the value, for example `CO2`. |
+| Icon | LaMetric icon ID (for example `2422`) or the name of an icon file on the clock. |
+| Text color | Default color of the text. |
+| Decimals | Optional rounding of numeric values. |
+| Show the unit | Appends the entity's unit, with no space before `°` and `%`, like Home Assistant. |
+| Hide when the value is 0 | Removes the app from the rotation at zero (solar production at night…). |
+| Thresholds | Up to two values above which the text switches to another color. |
+
+The app always leaves the rotation while the entity is unavailable or unknown.
+
+For example, a CO2 monitor in green, orange above 800 ppm and red above 1200 ppm
+is three colors and two thresholds: no template needed.
+
+### Template apps
 
 | Option | Default | Description |
 |---|---|---|
@@ -69,6 +96,29 @@ your Home Assistant configuration, then restart Home Assistant.
 | Alternate pages only while on screen | On | While another app is displayed, only the first page is kept up to date. Saves most of the MQTT traffic. |
 | Hide when empty | On | Removes the app from the clock's rotation while the template renders no page. |
 | Lifetime | 0 (off) | Sets AWTRIX's `lifetime` so the clock drops the app if Home Assistant stops refreshing it. The integration refreshes it in time while running. |
+
+## Indicators
+
+AWTRIX 3 has three colored indicators on the right edge of the screen: 1 in the
+top corner, 2 in the middle, 3 in the bottom corner.
+
+- **Simple:** the indicator is lit, with a color and an optional blink or fade,
+  while an entity is in a given state (`on`, `open`, `home`…), and off otherwise.
+- **Template:** the template renders the indicator's JSON: `color` as a hex string
+  or an RGB list, optionally `blink` or `fade` in milliseconds. Render `{}` to turn
+  it off.
+
+```jinja
+{#- Blue while exporting, green to red while importing. -#}
+{%- set w = states('sensor.grid_power') | float(0) * 1000 -%}
+{%- if w < 0 -%}
+  {"color": [0, 150, {{ (150 + [w | abs, 2000] | min / 2000 * 105) | int }}]}
+{%- elif w <= 500 -%}
+  {"color": [{{ (w / 500 * 255) | int }}, 255, 0]}
+{%- else -%}
+  {"color": [255, {{ (255 - ([w, 3000] | min - 500) / 2500 * 255) | int }}, 0]}
+{%- endif -%}
+```
 
 ## Writing templates
 
@@ -133,16 +183,16 @@ night when no tram is scheduled.
 
 ## Entities and services
 
-Each app gets one **switch**. Turning it off removes the app from the clock and
-keeps its configuration; turning it on brings it back. Its state is restored after
-a restart.
+Each app and indicator gets one **switch**. Turning it off removes the app from the
+clock (or turns the indicator off) and keeps its configuration; turning it on brings
+it back. Its state is restored after a restart.
 
 There is deliberately no "current page" or "last update" sensor: those would write
 to the database on every page, which is exactly what this integration avoids.
 
 | Service | Description |
 |---|---|
-| `awtrix_studio.refresh` | Publishes every enabled app again. |
+| `awtrix_studio.refresh` | Publishes every enabled app and indicator again. |
 
 ## How it works
 

@@ -28,6 +28,10 @@ class FirmwareDriver(ABC):
     def app_topic(self, app_name: str) -> str:
         """Return the topic used to publish an app."""
 
+    @abstractmethod
+    def indicator_topic(self, number: str) -> str:
+        """Return the topic of a colored indicator (1, 2 or 3)."""
+
     @property
     @abstractmethod
     def remove_payload(self) -> str:
@@ -68,9 +72,13 @@ class Awtrix3Driver(FirmwareDriver):
         """Return the custom app topic."""
         return f"{self.prefix}/custom/{app_name}"
 
+    def indicator_topic(self, number: str) -> str:
+        """Indicators have one topic each."""
+        return f"{self.prefix}/indicator{number}"
+
     @property
     def remove_payload(self) -> str:
-        """An empty payload deletes a custom app."""
+        """An empty payload deletes a custom app or turns an indicator off."""
         return ""
 
     @property

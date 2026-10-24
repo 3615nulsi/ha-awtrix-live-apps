@@ -1,0 +1,142 @@
+"""Tests for simple-mode template generation, rendered by Home Assistant."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.template import Template
+import pytest
+
+from custom_components.awtrix_studio.pages import parse_pages
+from custom_components.awtrix_studio.templates import (
+    build_app_template,
+    build_indicator_template,
+    rgb_to_hex,
+)
+
+
+def render(hass: HomeAssistant, template: str) -> list[dict[str, Any]]:
+    """Render like the engine does and return the pages."""
+    return parse_pages(Template(template, hass).async_render(parse_result=True))
+
+
+def test_rgb_to_hex() -> None:
+    """Colors are normalized to #RRGGBB."""
+    assert rgb_to_hex([136, 212, 152], [0, 0, 0]) == "#88D498"
+    assert rgb_to_hex("#ff9999", [0, 0, 0]) == "#FF9999"
+    assert rgb_to_hex(None, [255, 255, 255]) == "#FFFFFF"
+    assert rgb_to_hex([300, -5, 12], [0, 0, 0]) == "#FF000C"
+
+
+async def test_co2_with_thresholds(hass: HomeAssistant) -> None:
+    """Two thresholds pick the color, the unit follows the value."""
+    template = build_app_template(
+        {
+            "entity_id": "sensor.co2",
+            "icon": "43980",
+            "color": [136, 212, 152],
+            "decimals": 0,
+            "show_unit": True,
+            "threshold_1": 800,
+            "color_1": [255, 209, 128],
+            "threshold_2": 1200,
+            "color_2": [255, 153, 153],
+        }
+    )
+    attrs = {"unit_of_measurement": "ppm"}
+
+    hass.states.async_set("sensor.co2", "650.4", attrs)
+    assert render(hass, template) == [
+        {"text": "650 ppm", "color": "#88D498", "icon": "43980"}
+    ]
+    hass.states.async_set("sensor.co2", "950", attrs)
+    assert render(hass, template)[0]["color"] == "#FFD180"
+    hass.states.async_set("sensor.co2", "1500", attrs)
+    assert render(hass, template)[0]["color"] == "#FF9999"
+
+
+@pytest.mark.parametrize(
+    ("state", "unit", "options", "text"),
+    [
+        ("21.537", "°C", {"decimals": 1}, "21.5°C"),
+        ("54", "%", {}, "54%"),
+        ("0.42", "kW", {}, "0.42 kW"),
+        ("0.42", "kW", {"show_unit": False}, "0.42"),
+        ("12", "km", {"label": "Nico"}, "Nico 12 km"),
+        ("idle", None, {}, "idle"),
+        ("3.0", None, {"decimals": 0}, "3"),
+    ],
+)
+async def test_text_format(
+    hass: HomeAssistant,
+    state: str,
+    unit: str | None,
+    options: dict[str, Any],
+    text: str,
+) -> None:
+    """Label, value, decimals and unit are combined like Home Assistant does."""
+    attrs = {"unit_of_measurement": unit} if unit else {}
+    hass.states.async_set("sensor.value", state, attrs)
+    template = build_app_template({"entity_id": "sensor.value", **options})
+    assert render(hass, template)[0]["text"] == text
+
+
+async def test_hidden_when_unavailable_or_zero(hass: HomeAssistant) -> None:
+    """No page while unavailable; optionally none while zero."""
+    plain = build_app_template({"entity_id": "sensor.pv"})
+    hide_zero = build_app_template({"entity_id": "sensor.pv", "hide_when_zero": True})
+
+    hass.states.async_set("sensor.pv", "unavailable")
+    assert render(hass, plain) == []
+    hass.states.async_set("sensor.pv", "0")
+    assert render(hass, plain) == [{"text": "0", "color": "#FFFFFF"}]
+    assert render(hass, hide_zero) == []
+    hass.states.async_set("sensor.pv", "1.2")
+    assert render(hass, hide_zero) == [{"text": "1.2", "color": "#FFFFFF"}]
+
+
+async def test_label_with_quotes_is_escaped(hass: HomeAssistant) -> None:
+    """User text cannot break the template."""
+    hass.states.async_set("sensor.value", "1")
+    template = build_app_template(
+        {"entity_id": "sensor.value", "label": 'Say "hi" {{ x }}', "icon": "a'b"}
+    )
+    page = render(hass, template)[0]
+    assert page["text"] == 'Say "hi" {{ x }} 1'
+    assert page["icon"] == "a'b"
+
+
+@pytest.mark.parametrize(
+    ("effect", "expected"),
+    [
+        ("none", {"color": "#D357FE"}),
+        ("fade", {"color": "#D357FE", "fade": 3000}),
+        ("blink", {"color": "#D357FE", "blink": 3000}),
+    ],
+)
+async def test_indicator(
+    hass: HomeAssistant, effect: str, expected: dict[str, Any]
+) -> None:
+    """A simple indicator is lit only in the chosen state."""
+    template = build_indicator_template(
+        {
+            "entity_id": "input_boolean.mail",
+            "active_state": "on",
+            "color": [211, 87, 254],
+            "effect": effect,
+            "effect_interval": 3000,
+        }
+    )
+    hass.states.async_set("input_boolean.mail", "on")
+    assert render(hass, template) == [expected]
+    hass.states.async_set("input_boolean.mail", "off")
+    assert render(hass, template) == []
+
+
+def test_generated_template_is_readable() -> None:
+    """Converting to template mode shows something a human can edit."""
+    template = build_app_template({"entity_id": "sensor.co2", "label": "CO2"})
+    assert template.startswith("{#- Generated by Awtrix Studio")
+    assert json.dumps("sensor.co2") in template

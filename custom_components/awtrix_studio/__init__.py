@@ -12,16 +12,9 @@ from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .const import (
-    CONF_APP_NAME,
-    CONF_FIRMWARE,
-    CONF_PREFIX,
-    DOMAIN,
-    SERVICE_REFRESH,
-    SUBENTRY_TYPE_APP,
-)
+from .const import CONF_FIRMWARE, CONF_PREFIX, DOMAIN, SERVICE_REFRESH
 from .drivers import get_driver
-from .manager import ClockManager
+from .manager import MANAGED_SUBENTRY_TYPES, ClockManager, subentry_topic
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +47,7 @@ async def async_setup_entry(
         hass, get_driver(entry.data[CONF_FIRMWARE], entry.data[CONF_PREFIX])
     )
     for subentry in entry.subentries.values():
-        if subentry.subentry_type == SUBENTRY_TYPE_APP:
+        if subentry.subentry_type in MANAGED_SUBENTRY_TYPES:
             manager.add_app(subentry)
     await manager.async_start()
     entry.runtime_data = manager
@@ -78,13 +71,13 @@ async def async_unload_entry(
 async def async_remove_entry(
     hass: HomeAssistant, entry: AwtrixStudioConfigEntry
 ) -> None:
-    """Remove every app from the clock when the clock is deleted."""
+    """Remove every app and indicator from the clock when it is deleted."""
     if not await mqtt.async_wait_for_mqtt_client(hass):
         return
     driver = get_driver(entry.data[CONF_FIRMWARE], entry.data[CONF_PREFIX])
     for subentry in entry.subentries.values():
-        if subentry.subentry_type == SUBENTRY_TYPE_APP:
-            topic = driver.app_topic(subentry.data[CONF_APP_NAME])
+        if subentry.subentry_type in MANAGED_SUBENTRY_TYPES:
+            topic = subentry_topic(driver, subentry)
             await _async_remove_from_clock(hass, topic, driver.remove_payload)
 
 

@@ -13,8 +13,9 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import AwtrixStudioConfigEntry
-from .const import CONF_PREFIX, DOMAIN, SUBENTRY_TYPE_APP
+from .const import CONF_INDICATOR, CONF_PREFIX, DOMAIN, SUBENTRY_TYPE_INDICATOR
 from .live_app import LiveApp
+from .manager import MANAGED_SUBENTRY_TYPES
 
 PARALLEL_UPDATES = 0
 
@@ -24,10 +25,10 @@ async def async_setup_entry(
     entry: AwtrixStudioConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Add a switch for every app of the clock."""
+    """Add a switch for every app and indicator of the clock."""
     manager = entry.runtime_data
     for subentry in entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_APP:
+        if subentry.subentry_type not in MANAGED_SUBENTRY_TYPES:
             continue
         async_add_entities(
             [AppSwitch(entry, subentry, manager.apps[subentry.subentry_id])],
@@ -36,11 +37,10 @@ async def async_setup_entry(
 
 
 class AppSwitch(SwitchEntity, RestoreEntity):
-    """Enable or disable a live app."""
+    """Enable or disable a live app or indicator."""
 
     _attr_has_entity_name = True
     _attr_should_poll = False
-    _attr_translation_key = "app"
 
     def __init__(
         self,
@@ -51,7 +51,14 @@ class AppSwitch(SwitchEntity, RestoreEntity):
         """Initialize the switch."""
         self._app = app
         self._attr_unique_id = f"{subentry.subentry_id}_enabled"
-        self._attr_translation_placeholders = {"app_name": app.name}
+        if subentry.subentry_type == SUBENTRY_TYPE_INDICATOR:
+            self._attr_translation_key = "indicator"
+            self._attr_translation_placeholders = {
+                "number": subentry.data[CONF_INDICATOR]
+            }
+        else:
+            self._attr_translation_key = "app"
+            self._attr_translation_placeholders = {"app_name": app.name}
         prefix = entry.data[CONF_PREFIX]
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -90,6 +97,6 @@ class AppSwitch(SwitchEntity, RestoreEntity):
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Stop the app and remove it from the clock."""
+        """Stop the app and remove it from the clock (or turn the indicator off)."""
         await self._app.async_disable(remove=True)
         self.async_write_ha_state()

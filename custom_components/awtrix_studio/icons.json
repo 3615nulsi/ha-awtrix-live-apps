@@ -3,6 +3,9 @@
     "switch": {
       "app": {
         "default": "mdi:view-carousel"
+      },
+      "indicator": {
+        "default": "mdi:circle-small"
       }
     }
   },
