@@ -18,7 +18,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements_test.txt
       - name: Run tests
-        run: pytest -v
+        run: pytest -v --junitxml=junit.xml
+      - name: Annotate failures
+        if: failure()
+        run: python .github/scripts/annotate_junit.py junit.xml
 
   ruff:
     runs-on: ubuntu-latest
