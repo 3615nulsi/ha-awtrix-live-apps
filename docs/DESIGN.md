@@ -202,3 +202,27 @@ Résultat : l'automatisation actuelle (déclencheur toutes les 3 s, `repeat`,
 - Tests : `pytest-homeassistant-custom-component`, MQTT simulé.
 - Traductions : anglais et français.
 - Documentation (README) en anglais, avec l'app tram en exemple.
+
+## 11. Sécurité
+
+Règle générale : tout ce qu'un utilisateur saisit est une **donnée**, jamais du
+code, sauf le champ « Modèle », qui est du code par définition.
+
+- **Mode modèle** : le modèle est exécuté par le moteur Jinja de Home Assistant,
+  dans son bac à sable, avec les mêmes droits que n'importe quel modèle HA. Seuls
+  les administrateurs peuvent le saisir (flux de configuration et panneau sont
+  réservés aux administrateurs).
+- **Mode simple** : les champs (libellé, icône, état actif…) sont insérés dans le
+  modèle généré uniquement comme chaînes Jinja échappées (échappement JSON) ; les
+  identifiants d'entité sont validés par expression régulière, les couleurs
+  doivent être un RVB ou un `#RRGGBB` strict, les nombres sont bornés. Des tests
+  essaient d'injecter `{{ }}`, `{% %}`, `{# #}`, guillemets et sauts de ligne
+  dans chaque champ et vérifient que le texte ressort tel quel.
+- **MQTT** : noms d'app limités à `[A-Za-z0-9_-]`, préfixe sans `#`, `+` ni
+  espace : impossible de publier hors des topics de l'horloge. Les payloads sont
+  produits par sérialisation JSON, jamais par concaténation.
+- **Panneau (à venir)** : rendu des données uniquement en texte (échappement
+  automatique de Lit, jamais `innerHTML` ni `eval`), commandes WebSocket réservées
+  aux administrateurs et validées par schéma, aperçu simulé qui interprète le
+  JSON comme des données de dessin, icônes LaMetric acceptées seulement sous
+  forme d'identifiant numérique.

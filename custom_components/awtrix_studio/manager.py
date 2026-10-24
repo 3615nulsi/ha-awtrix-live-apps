@@ -29,7 +29,11 @@ from .const import (
 )
 from .drivers import FirmwareDriver
 from .live_app import AppConfig, LiveApp
-from .templates import build_app_template, build_indicator_template
+from .templates import (
+    InvalidSimpleOptionsError,
+    build_app_template,
+    build_indicator_template,
+)
 
 MANAGED_SUBENTRY_TYPES = (SUBENTRY_TYPE_APP, SUBENTRY_TYPE_INDICATOR)
 
@@ -39,11 +43,15 @@ _LOGGER = logging.getLogger(__name__)
 def subentry_template(subentry: ConfigSubentry) -> str:
     """Return the template of an app or indicator, generating it in simple mode."""
     data = subentry.data
-    if data.get(CONF_MODE) == MODE_SIMPLE:
+    if data.get(CONF_MODE) != MODE_SIMPLE:
+        return data[CONF_TEMPLATE]
+    try:
         if subentry.subentry_type == SUBENTRY_TYPE_INDICATOR:
             return build_indicator_template(data)
         return build_app_template(data)
-    return data[CONF_TEMPLATE]
+    except InvalidSimpleOptionsError as err:
+        _LOGGER.error("Cannot build %s: %s", subentry.title, err)
+        return "{}"
 
 
 def subentry_topic(driver: FirmwareDriver, subentry: ConfigSubentry) -> str:
