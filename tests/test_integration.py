@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import json
 from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
@@ -392,9 +393,13 @@ async def test_simple_app_flow_and_conversion(
     await hass.async_block_till_done()
 
     topic = f"{PREFIX}/custom/co2"
-    assert published(mqtt_mock, topic) == [
-        '{"text":"950 ppm","color":"#FFD180","icon":"43980"}'
-    ]
+    payloads = published(mqtt_mock, topic)
+    assert len(payloads) == 1
+    assert json.loads(payloads[0]) == {
+        "text": "950 ppm",
+        "color": "#FFD180",
+        "icon": "43980",
+    }
 
     # Editing offers to convert the app to template mode, pre-filled.
     subentry_id = next(iter(entry.subentries))
@@ -427,7 +432,11 @@ async def test_simple_app_flow_and_conversion(
     assert entry.subentries[subentry_id].data["app_name"] == "co2"
 
 
-async def test_indicators(hass: HomeAssistant, mqtt_mock: MqttMockHAClient) -> None:
+async def test_indicators(
+    hass: HomeAssistant,
+    mqtt_mock: MqttMockHAClient,
+    freezer: FrozenDateTimeFactory,
+) -> None:
     """Indicators publish to their own topic and turn off with an empty payload."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -464,8 +473,12 @@ async def test_indicators(hass: HomeAssistant, mqtt_mock: MqttMockHAClient) -> N
     indicator3 = f"{PREFIX}/indicator3"
     assert published(mqtt_mock, indicator3) == [""]
     hass.states.async_set("input_boolean.mail", "on")
-    await hass.async_block_till_done()
-    assert published(mqtt_mock, indicator3) == ["", '{"color":"#D357FE","fade":3000}']
+    await tick(hass, freezer, 2)  # past the anti-burst cooldown
+    assert published(mqtt_mock, indicator3)[0] == ""
+    assert json.loads(published(mqtt_mock, indicator3)[1]) == {
+        "color": "#D357FE",
+        "fade": 3000,
+    }
     assert hass.states.get("switch.awtrix_test_studio_indicator_3").state == "on"
 
     # Template indicator 1: blue while exporting.
@@ -484,7 +497,9 @@ async def test_indicators(hass: HomeAssistant, mqtt_mock: MqttMockHAClient) -> N
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    assert published(mqtt_mock, f"{PREFIX}/indicator1") == ['{"color":[0,150,255]}']
+    assert [json.loads(p) for p in published(mqtt_mock, f"{PREFIX}/indicator1")] == [
+        {"color": [0, 150, 255]}
+    ]
 
     # The same indicator cannot be configured twice.
     result = await hass.config_entries.subentries.async_init(
