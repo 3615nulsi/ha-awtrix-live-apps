@@ -10,11 +10,14 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 
+from . import websocket
 from .const import CONF_FIRMWARE, CONF_PREFIX, DOMAIN, SERVICE_REFRESH
 from .drivers import get_driver
 from .manager import MANAGED_SUBENTRY_TYPES, ClockManager, subentry_topic
+from .panel import async_register_panel
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +36,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             await entry.runtime_data.async_republish_all()
 
     hass.services.async_register(DOMAIN, SERVICE_REFRESH, _async_refresh)
+    websocket.async_setup(hass)
+    await async_register_panel(hass)
     return True
 
 
@@ -55,6 +60,7 @@ async def async_setup_entry(
     # Apps are enabled by their switch, once its last state is restored.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    async_dispatcher_send(hass, websocket.signal_entry_loaded(entry.entry_id))
     return True
 
 
@@ -65,6 +71,7 @@ async def async_unload_entry(
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         await entry.runtime_data.async_stop()
+        async_dispatcher_send(hass, websocket.signal_entry_loaded(entry.entry_id))
     return unloaded
 
 

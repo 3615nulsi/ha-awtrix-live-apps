@@ -1,13 +1,23 @@
 {
   "domain": "awtrix_studio",
   "name": "Awtrix Studio",
-  "codeowners": ["@3615nulsi"],
+  "after_dependencies": [
+    "frontend",
+    "http",
+    "panel_custom"
+  ],
+  "codeowners": [
+    "@3615nulsi"
+  ],
   "config_flow": true,
-  "dependencies": ["mqtt"],
+  "dependencies": [
+    "mqtt",
+    "websocket_api"
+  ],
   "documentation": "https://github.com/3615nulsi/ha-awtrix-studio",
   "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/3615nulsi/ha-awtrix-studio/issues",
   "requirements": [],
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

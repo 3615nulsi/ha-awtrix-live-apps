@@ -79,6 +79,8 @@ class LiveApp:
         self._last_payload: str | None = None
         self._last_error: str | None = None
 
+        self._listeners: list[Callable[[], None]] = []
+
         self._tracker: TrackTemplateResultInfo | None = None
         self._cancel_cycle: CALLBACK_TYPE | None = None
         self._cancel_keepalive: CALLBACK_TYPE | None = None
@@ -112,6 +114,43 @@ class LiveApp:
         """Return True if pages are currently alternating."""
         return self._cancel_cycle is not None
 
+    @property
+    def pages(self) -> list[str]:
+        """Return the current pages, serialized as published."""
+        return list(self._pages)
+
+    @property
+    def page_index(self) -> int:
+        """Return the index of the page currently published."""
+        return self._page_index
+
+    @property
+    def on_screen(self) -> bool:
+        """Return True if the clock is showing this app."""
+        return self._on_screen
+
+    @property
+    def last_error(self) -> str | None:
+        """Return the last template error, if the template is failing."""
+        return self._last_error
+
+    @callback
+    def async_add_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:
+        """Call `listener` whenever what the app shows changes."""
+        self._listeners.append(listener)
+
+        @callback
+        def remove() -> None:
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+
+        return remove
+
+    @callback
+    def _notify(self) -> None:
+        for listener in list(self._listeners):
+            listener()
+
     # -------------------------------------------------------------- lifecycle
 
     async def async_enable(self) -> None:
@@ -127,6 +166,7 @@ class LiveApp:
         )
         # The tracker does not report the first render by itself.
         self._tracker.async_refresh()
+        self._notify()
 
         if self.config.lifetime > 0:
             self._cancel_keepalive = async_track_time_interval(
@@ -153,6 +193,8 @@ class LiveApp:
         if remove and was_enabled:
             await self._async_publish(self.driver.remove_payload, force=True)
         self._last_payload = None
+        if was_enabled:
+            self._notify()
 
     async def async_remove_from_clock(self) -> None:
         """Remove the app from the clock, whatever its state."""
@@ -178,6 +220,7 @@ class LiveApp:
             return
         self._on_screen = on_screen
         self._update_cycling()
+        self._notify()
 
     # -------------------------------------------------------------- rendering
 
@@ -187,6 +230,7 @@ class LiveApp:
         if message != self._last_error:
             self._last_error = message
             _LOGGER.log(level, "App '%s': template error: %s", self.name, message)
+            self._notify()
 
     @callback
     def _on_template_result(
@@ -206,6 +250,8 @@ class LiveApp:
             self._log_template_error(logging.WARNING, f"invalid pages, {err}")
             return
         self._last_error = None
+        if not self._enabled:
+            return
 
         if self.config.single_page:
             pages = pages[:1]
@@ -217,6 +263,7 @@ class LiveApp:
 
         self._debouncer.async_schedule_call()
         self._update_cycling()
+        self._notify()
 
     # ---------------------------------------------------------------- cycling
 
@@ -241,6 +288,7 @@ class LiveApp:
         if self._page_index != 0:
             self._page_index = 0
             self._debouncer.async_schedule_call()
+            self._notify()
 
     @callback
     def _schedule_next_page(self) -> None:
@@ -262,6 +310,7 @@ class LiveApp:
             return
         self._page_index = (self._page_index + 1) % len(self._pages)
         self._schedule_next_page()
+        self._notify()
         await self._async_publish(self._current_payload())
 
     # ------------------------------------------------------------- publishing

@@ -14,6 +14,8 @@ from typing import Any
 
 from .const import FIRMWARE_AWTRIX3
 
+SCREEN_PIXELS = 32 * 8
+
 
 class FirmwareDriver(ABC):
     """Transport details for one firmware family."""
@@ -61,6 +63,30 @@ class FirmwareDriver(ABC):
 
         A lifetime explicitly set by the user in the template is kept.
         """
+
+    # Panel helpers: the screen mirror and navigation. A firmware that cannot
+    # do something returns None and the panel hides the matching feature.
+
+    @property
+    def screen_topic(self) -> str | None:
+        """Return the topic on which the clock sends its screen content."""
+        return None
+
+    def screen_request(self) -> tuple[str, str] | None:
+        """Return the (topic, payload) asking the clock for its screen."""
+        return None
+
+    def parse_screen(self, payload: str) -> list[int] | None:
+        """Return the screen as 256 colors (0xRRGGBB), row by row."""
+        return None
+
+    def show_app(self, app_name: str) -> tuple[str, str] | None:
+        """Return the (topic, payload) bringing an app on screen now."""
+        return None
+
+    def navigate(self, forward: bool) -> tuple[str, str] | None:
+        """Return the (topic, payload) moving to the next or previous app."""
+        return None
 
 
 class Awtrix3Driver(FirmwareDriver):
@@ -114,6 +140,38 @@ class Awtrix3Driver(FirmwareDriver):
         if "lifetime" in page:
             return page
         return {**page, "lifetime": seconds}
+
+    @property
+    def screen_topic(self) -> str:
+        """The clock answers screen requests on this topic."""
+        return f"{self.prefix}/screen"
+
+    def screen_request(self) -> tuple[str, str]:
+        """Any message on `sendscreen` asks for the screen."""
+        return f"{self.prefix}/sendscreen", ""
+
+    def parse_screen(self, payload: str) -> list[int] | None:
+        """The screen is a JSON array of 256 RGB integers."""
+        try:
+            data = json.loads(payload)
+        except ValueError:
+            return None
+        if not isinstance(data, list) or len(data) != SCREEN_PIXELS:
+            return None
+        if not all(
+            isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 0xFFFFFF
+            for v in data
+        ):
+            return None
+        return data
+
+    def show_app(self, app_name: str) -> tuple[str, str]:
+        """`switch` brings an app on screen by name."""
+        return f"{self.prefix}/switch", json.dumps({"name": app_name})
+
+    def navigate(self, forward: bool) -> tuple[str, str]:
+        """`nextapp` and `previousapp` move through the rotation."""
+        return f"{self.prefix}/{'nextapp' if forward else 'previousapp'}", ""
 
 
 DRIVERS: dict[str, type[FirmwareDriver]] = {

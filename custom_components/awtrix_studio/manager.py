@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime, timedelta
 import logging
 
 from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigSubentry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 
 from .const import (
     CONF_APP_NAME,
@@ -36,6 +38,12 @@ from .templates import (
 )
 
 MANAGED_SUBENTRY_TYPES = (SUBENTRY_TYPE_APP, SUBENTRY_TYPE_INDICATOR)
+
+# How often the screen mirror asks the clock for its screen, while a panel
+# is watching. Nothing is requested when no one is.
+SCREEN_REFRESH = timedelta(seconds=1)
+# How long a "test on the clock" stays before the real content comes back.
+TEST_DURATION = 15.0
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,6 +108,32 @@ class ClockManager:
         self._unsubscribers: list[Callable[[], None]] = []
         self._current_app: str | None = None
         self._last_uptime: float | None = None
+        self._listeners: list[Callable[[], None]] = []
+        self._screen_listeners: list[Callable[[list[int]], None]] = []
+        self._screen_unsubscribers: list[Callable[[], None]] = []
+        self._test_timers: dict[str, CALLBACK_TYPE] = {}
+
+    @property
+    def current_app(self) -> str | None:
+        """Return the name of the app the clock is showing, if known."""
+        return self._current_app
+
+    @callback
+    def async_add_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:
+        """Call `listener` when an app changes or the clock switches app."""
+        self._listeners.append(listener)
+
+        @callback
+        def remove() -> None:
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+
+        return remove
+
+    @callback
+    def _notify(self) -> None:
+        for listener in list(self._listeners):
+            listener()
 
     @property
     def prefix(self) -> str:
@@ -117,6 +151,7 @@ class ClockManager:
             topic=subentry_topic(self.driver, subentry),
         )
         app.async_set_on_screen(app.name == self._current_app)
+        app.async_add_listener(self._notify)
         self.apps[subentry.subentry_id] = app
         return app
 
@@ -138,8 +173,91 @@ class ClockManager:
         """Stop all apps without touching the clock."""
         while self._unsubscribers:
             self._unsubscribers.pop()()
+        self._screen_listeners.clear()
+        self._stop_screen()
+        for cancel in self._test_timers.values():
+            cancel()
+        self._test_timers.clear()
         for app in self.apps.values():
             await app.async_shutdown()
+
+    async def async_send(self, message: tuple[str, str] | None) -> None:
+        """Publish a (topic, payload) command, if the firmware has one."""
+        if message is not None:
+            await self._publish(*message)
+
+    async def async_test(
+        self, topic: str, payload: str, restore: LiveApp | None
+    ) -> None:
+        """Show a payload for a while, then bring the real content back."""
+        if cancel := self._test_timers.pop(topic, None):
+            cancel()
+        await self._publish(topic, payload)
+
+        async def _restore(_now: datetime) -> None:
+            self._test_timers.pop(topic, None)
+            if restore is not None and restore.enabled:
+                await restore.async_republish()
+            else:
+                await self._publish(topic, self.driver.remove_payload)
+
+        self._test_timers[topic] = async_call_later(self.hass, TEST_DURATION, _restore)
+
+    # ---------------------------------------------------------- screen mirror
+
+    async def async_subscribe_screen(
+        self, listener: Callable[[list[int]], None]
+    ) -> CALLBACK_TYPE:
+        """Stream the clock's screen to `listener` while subscribed."""
+        self._screen_listeners.append(listener)
+        if len(self._screen_listeners) == 1:
+            await self._async_start_screen()
+
+        @callback
+        def remove() -> None:
+            if listener in self._screen_listeners:
+                self._screen_listeners.remove(listener)
+            if not self._screen_listeners:
+                self._stop_screen()
+
+        return remove
+
+    async def _async_start_screen(self) -> None:
+        topic = self.driver.screen_topic
+        if topic is None or self.driver.screen_request() is None:
+            return
+        self._screen_unsubscribers.append(
+            await mqtt.async_subscribe(self.hass, topic, self._on_screen)
+        )
+
+        async def _request(_now: datetime | None = None) -> None:
+            await self.async_send(self.driver.screen_request())
+
+        self._screen_unsubscribers.append(
+            async_track_time_interval(
+                self.hass,
+                _request,
+                SCREEN_REFRESH,
+                name=f"awtrix_studio screen {self.prefix}",
+            )
+        )
+        await _request()
+
+    @callback
+    def _stop_screen(self) -> None:
+        while self._screen_unsubscribers:
+            self._screen_unsubscribers.pop()()
+
+    @callback
+    def _on_screen(self, msg: mqtt.ReceiveMessage) -> None:
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            payload = payload.decode(errors="replace")
+        pixels = self.driver.parse_screen(str(payload))
+        if pixels is None:
+            return
+        for listener in list(self._screen_listeners):
+            listener(pixels)
 
     async def async_republish_all(self) -> None:
         """Publish every enabled app again."""
@@ -157,9 +275,13 @@ class ClockManager:
         payload = msg.payload
         if isinstance(payload, bytes):
             payload = payload.decode(errors="replace")
-        self._current_app = self.driver.parse_current_app(str(payload))
+        current = self.driver.parse_current_app(str(payload))
+        if current == self._current_app:
+            return
+        self._current_app = current
         for app in self.apps.values():
             app.async_set_on_screen(app.name == self._current_app)
+        self._notify()
 
     @callback
     def _on_status(self, msg: mqtt.ReceiveMessage) -> None:
