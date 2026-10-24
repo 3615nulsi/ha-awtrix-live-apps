@@ -86,6 +86,7 @@ function unsubscribe(promise) {
 }
 
 const STYLE = `
+[hidden] { display: none !important; }
 :host { display: block; min-height: 100%; background: var(--primary-background-color, #f4f5f7);
   color: var(--primary-text-color, #1f2328); font-family: var(--ha-font-family-body, Roboto, system-ui, sans-serif); }
 * { box-sizing: border-box; }
@@ -138,8 +139,9 @@ dd { margin: 2px 0 0; font-weight: 500; }
   background: var(--disabled-color, #9aa0a6); display: flex; justify-content: flex-start; }
 .switch[aria-checked="true"] { background: var(--primary-color, #0277bd); justify-content: flex-end; }
 .switch span { width: 18px; height: 18px; border-radius: 50%; background: #fff; display: block; }
-.indicators { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-.indicator { padding: 14px; display: flex; gap: 12px; align-items: center; }
+.indicators { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.indicator { padding: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.indicator .grow { flex: 1 1 140px; min-width: 0; }
 .indicator.free { border-style: dashed; }
 .swatch { width: 26px; height: 26px; border-radius: 6px; flex: none; background: #26262b; }
 .editor { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
@@ -158,7 +160,7 @@ dd { margin: 2px 0 0; font-weight: 500; }
 .field textarea { font-family: var(--ha-font-family-code, "Roboto Mono", monospace); font-size: 13px; line-height: 1.55; min-height: 280px; resize: vertical; }
 .field input[type=color] { width: 56px; height: 38px; padding: 2px; border-radius: 8px; border: 1px solid var(--divider-color, #c4c7cc); background: none; }
 .check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; }
-.check input { width: 20px; height: 20px; margin: 1px 0 0; }
+.check input { width: 20px; height: 20px; margin: 1px 0 0; flex: none; }
 .error-text { color: var(--error-color, #db4437); font-size: 13px; min-height: 0; }
 fieldset { border: 1px solid var(--divider-color, #e3e5e8); border-radius: 10px; padding: 12px 14px; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 legend { font-size: 14px; font-weight: 500; padding: 0 6px; }
@@ -469,7 +471,7 @@ class AwtrixStudioPanel extends HTMLElement {
       const item = this._items("indicator").find((i) => i.data.indicator === n);
       if (!item) {
         this._indicatorRow.append(h("div", { class: "card indicator free" }, h("span", { class: "swatch" }),
-          h("div", { class: "row between", style: "flex:1" },
+          h("div", { class: "row between grow" },
             h("div", {}, h("strong", {}, this.t("indicator_n", { n })), h("div", { class: "muted" }, this.t("indicator_free"))),
             h("button", { class: "btn small", onClick: () => this._openEditor("indicator", null, n) }, this.t("configure")))));
         return;
@@ -479,7 +481,7 @@ class AwtrixStudioPanel extends HTMLElement {
       const toggle = h("button", { class: "switch", role: "switch", "aria-label": this.t("enable", { name: this.t("indicator_n", { n }) }),
         onClick: () => this._call({ type: "awtrix_studio/enable", subentry_id: item.subentry_id, enabled: !this._findItem(item.subentry_id)?.enabled }) }, h("span"));
       this._indicatorRow.append(h("div", { class: "card indicator" }, swatch,
-        h("div", { style: "flex:1;min-width:0" }, h("strong", {}, this.t("indicator_n", { n })), state),
+        h("div", { class: "grow" }, h("strong", {}, this.t("indicator_n", { n })), state),
         toggle,
         h("button", { class: "btn small", onClick: () => this._openEditor("indicator", item.subentry_id) }, this.t("edit"))));
       this._indicatorCards.set(item.subentry_id, { swatch, state, toggle });

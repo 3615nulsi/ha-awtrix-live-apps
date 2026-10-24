@@ -56,13 +56,32 @@ Awtrix Studio does the same job without any of that:
 Copy `custom_components/awtrix_studio` into the `custom_components` folder of
 your Home Assistant configuration, then restart Home Assistant.
 
+## The panel
+
+Awtrix Studio adds an **Awtrix Studio** entry to the sidebar (for
+administrators):
+
+- **Live mirror** of the clock's real screen, with previous / next app controls.
+  The clock is only asked for its screen while the panel is open.
+- **One card per app** with a live thumbnail of what it shows, its status (on
+  screen, in the rotation, hidden, failing) and its on/off switch.
+- **Indicators** at a glance.
+- **Editor** for simple and template modes with a **live preview**: a simulated
+  screen that updates as you type and alternates pages like the clock, a
+  real-screen tab, the JSON sent for each page, and **Send to the clock to test**
+  (the real content comes back after 15 seconds).
+
+The simulated preview is an approximation (font, scrolling and effects are
+simplified); the real-screen tab shows the exact result.
+
 ## Setup
 
 1. **Settings → Devices & services → Add integration → Awtrix Studio.**
 2. Pick the firmware and enter the clock's **MQTT prefix**, as set in the clock's
    MQTT settings (for example `awtrix_1f1b94`).
-3. On the integration's card, use **Add app** or **Add indicator**, then choose
-   **Simple** or **Template**.
+3. Open the **Awtrix Studio** panel in the sidebar and add apps and indicators
+   from there. The same can be done from the integration's card with **Add app**
+   or **Add indicator**.
 
 Any app or indicator can be edited later. A simple one can also be **converted to
 template mode**: the form opens with the generated template, ready to be extended.
@@ -204,6 +223,16 @@ to the database on every page, which is exactly what this integration avoids.
 - The clock's uptime, read from `<prefix>/stats`, reveals a reboot; the apps are
   then published again.
 - Publications go straight to the MQTT client, so they create no events.
+
+## Security
+
+- Everything typed in simple mode is inserted in the generated template as an
+  escaped string, never as code; entity ids, colors and numbers are validated.
+- Names that end up in MQTT topics are restricted to letters, digits, `-` and `_`.
+- The panel and its WebSocket commands are for administrators only, and the panel
+  never inserts HTML: every value is displayed as text.
+- Template mode runs Home Assistant templates, with the same sandbox and rights as
+  any other template.
 
 ## Supported firmware
 
