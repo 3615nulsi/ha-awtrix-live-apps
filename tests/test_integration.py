@@ -45,6 +45,12 @@ def published(mqtt_mock: MqttMockHAClient, topic: str = APP_TOPIC) -> list[str]:
 
 
 @pytest.fixture
+def expected_lingering_timers() -> bool:
+    """The mocked MQTT client leaves its periodic housekeeping timer behind."""
+    return True
+
+
+@pytest.fixture
 def mock_entry() -> MockConfigEntry:
     """A clock with one two-page app."""
     return MockConfigEntry(
