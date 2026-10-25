@@ -301,7 +301,14 @@ async def test_simple_app_speaks_ng(
     async_fire_mqtt_message(
         hass,
         f"{PREFIX}/state/capabilities",
-        json.dumps({"effects": ["Plasma"], "overlays": ["snow"], "palettes": ["Lava"]}),
+        json.dumps(
+            {
+                "effects": ["Plasma"],
+                "overlays": ["snow"],
+                "palettes": ["Lava"],
+                "display": {"width": 52, "height": 16},
+            }
+        ),
     )
     async_fire_mqtt_message(
         hass,
@@ -313,9 +320,14 @@ async def test_simple_app_speaks_ng(
     await tick(hass, freezer, 0.2)
     snapshot = (await client.receive_json())["event"]
     assert snapshot["capabilities"]["effects"] == ["Plasma"]
+    # A TC002 draws apps at double size, on a 26 x 8 grid.
+    assert snapshot["display"] == {"width": 52, "height": 16, "scale": 2}
     [item] = snapshot["items"]
     assert item["clock_error"] == "palette: out of range"
 
     async_fire_mqtt_message(hass, f"{topic}/result", '{"ok":true}')
+    async_fire_mqtt_message(hass, f"{PREFIX}/state/settings", '{"enlargeApps":false}')
     await tick(hass, freezer, 0.2)
-    assert (await client.receive_json())["event"]["items"][0]["clock_error"] is None
+    snapshot = (await client.receive_json())["event"]
+    assert snapshot["items"][0]["clock_error"] is None
+    assert snapshot["display"]["scale"] == 1

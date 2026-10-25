@@ -201,7 +201,7 @@ Oui. Awtrix Studio ne touche qu'aux apps et indicateurs créés avec elle : tout
 <details>
 <summary><b>Est-ce compatible avec AWTRIX NG ?</b></summary>
 
-Oui, y compris l'Ulanzi TC002, qui fonctionne sous AWTRIX NG. Choisissez **Détecter automatiquement** à l'ajout de l'horloge. Les apps simples, les indicateurs et les options d'affichage sont écrits pour vous dans le JSON propre à NG, l'ordre de la boucle est mémorisé par l'horloge, et les icônes animées s'animent. En mode modèle, écrivez le JSON de NG : l'horloge refuse les clés inconnues, et le panneau affiche ce qu'elle a refusé. L'aperçu simulé ne dessine pas encore les dessins NG ni le grand écran du TC002 ; l'onglet **Écran réel**, si.
+Oui, y compris l'Ulanzi TC002, qui fonctionne sous AWTRIX NG. Choisissez **Détecter automatiquement** à l'ajout de l'horloge. Les apps simples, les indicateurs et les options d'affichage sont écrits pour vous dans le JSON propre à NG, l'ordre de la boucle est mémorisé par l'horloge, et les icônes animées s'animent. En mode modèle, écrivez le JSON de NG : l'horloge refuse les clés inconnues, et le panneau affiche ce qu'elle a refusé. L'aperçu dessine les dessins NG et, sur un TC002, montre les apps comme l'horloge : en double taille, sur une grille de 26 × 8.
 </details>
 
 <details>

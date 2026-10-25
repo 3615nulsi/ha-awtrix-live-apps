@@ -570,8 +570,9 @@ class AwtrixStudioPanel extends HTMLElement {
     const card = this._cards.get(item.subentry_id);
     if (!card) return;
     const page = item.pages[item.page_index] || item.pages[0];
-    const rendered = renderPage(page);
-    drawMatrix(card.canvas, rendered.pixels, { cell: 6, gap: 1, icon: rendered.icon });
+    const grid = this._appGrid();
+    const rendered = renderPage(page, grid);
+    drawMatrix(card.canvas, rendered.pixels, { ...this._cells(6, grid.width * grid.scale), gap: 1, icon: rendered.icon, ...grid });
     card.toggle.setAttribute("aria-checked", item.enabled ? "true" : "false");
     const visible = item.enabled && item.pages.length > 0;
     card.root.classList.toggle("dim", !visible);
@@ -625,6 +626,24 @@ class AwtrixStudioPanel extends HTMLElement {
     });
   }
 
+  /** The grid apps are drawn on, and how many LEDs each of its pixels lights. */
+  _appGrid() {
+    const display = this._snapshot?.display || {};
+    const scale = display.scale || 1;
+    return {
+      width: display.width ? Math.floor(display.width / scale) : WIDTH,
+      height: display.height ? Math.floor(display.height / scale) : HEIGHT,
+      scale,
+    };
+  }
+
+  /** Cell and gap sizes giving a display `leds` wide about the room of a 32-LED one. */
+  _cells(cell, leds) {
+    const gap = cell > 8 ? 2 : 1;
+    if (leds <= WIDTH) return { cell, gap };
+    return { cell: Math.max(2, Math.floor(((cell + gap) * WIDTH) / leds) - 1), gap: 1 };
+  }
+
   _isNG() {
     return this._snapshot?.firmware === "awtrix_ng";
   }
@@ -636,9 +655,10 @@ class AwtrixStudioPanel extends HTMLElement {
   _simulatedScreen() {
     const snapshot = this._snapshot;
     const current = this._items("app").find((a) => a.on_screen && a.pages.length);
-    const rendered = renderPage(current ? current.pages[current.page_index] || current.pages[0] : null);
-    addIndicators(rendered.pixels, this._indicatorPages());
-    return snapshot ? rendered : { pixels: new Array(WIDTH * HEIGHT).fill(null), icon: null };
+    const grid = this._appGrid();
+    const rendered = renderPage(current ? current.pages[current.page_index] || current.pages[0] : null, grid);
+    addIndicators(rendered.pixels, this._indicatorPages(), grid.width, grid.height);
+    return snapshot ? rendered : { pixels: new Array(grid.width * grid.height).fill(null), icon: null };
   }
 
   _drawMirror() {
@@ -646,12 +666,13 @@ class AwtrixStudioPanel extends HTMLElement {
     const fresh = this._screen.pixels && Date.now() - this._screen.at < MIRROR_STALE_MS;
     if (fresh) {
       // A large screen (TC002, 52 × 16) gets smaller cells to fit.
-      const cell = this._screen.width > WIDTH ? 7 : 12;
-      drawMatrix(this._mirrorCanvas, this._screen.pixels, { cell, gap: cell > 8 ? 2 : 1, glow: true, width: this._screen.width, height: this._screen.height });
+      drawMatrix(this._mirrorCanvas, this._screen.pixels, { ...this._cells(12, this._screen.width), glow: true,
+        width: this._screen.width, height: this._screen.height });
       this._mirrorCaption.textContent = this.t("live_mirror");
     } else {
       const rendered = this._simulatedScreen();
-      drawMatrix(this._mirrorCanvas, rendered.pixels, { cell: 12, gap: 2, icon: rendered.icon, glow: true });
+      const grid = this._appGrid();
+      drawMatrix(this._mirrorCanvas, rendered.pixels, { ...this._cells(12, grid.width * grid.scale), icon: rendered.icon, glow: true, ...grid });
       this._mirrorCaption.textContent = this._snapshot?.features?.screen ? this.t("live_waiting") : this.t("simulated_note");
     }
   }
@@ -1761,16 +1782,17 @@ class AwtrixStudioPanel extends HTMLElement {
     if (this._previewTab === "real") {
       const pixels = this._screen.pixels || new Array(WIDTH * HEIGHT).fill(null);
       const size = this._screen.pixels ? { width: this._screen.width, height: this._screen.height } : {};
-      const cell = (size.width || WIDTH) > WIDTH ? 6 : 11;
-      drawMatrix(this._previewCanvas, pixels, { cell, gap: cell > 8 ? 2 : 1, glow: true, ...size });
+      drawMatrix(this._previewCanvas, pixels, { ...this._cells(11, size.width || WIDTH), glow: true, ...size });
       this._previewNote.textContent = this._screen.pixels ? this.t("live_mirror") : this.t("live_waiting");
     } else if (kind === "indicator") {
-      const pixels = addIndicators(new Array(WIDTH * HEIGHT).fill(null), page ? { [this._form.indicator]: page } : {});
-      drawMatrix(this._previewCanvas, pixels, { cell: 11, gap: 2, glow: true });
+      const grid = this._appGrid();
+      const pixels = addIndicators(new Array(grid.width * grid.height).fill(null), page ? { [this._form.indicator]: page } : {}, grid.width, grid.height);
+      drawMatrix(this._previewCanvas, pixels, { ...this._cells(11, grid.width * grid.scale), glow: true, ...grid });
       this._previewNote.textContent = this.t("simulated_note");
     } else {
-      const rendered = renderPage(page);
-      drawMatrix(this._previewCanvas, rendered.pixels, { cell: 11, gap: 2, icon: rendered.icon, glow: true });
+      const grid = this._appGrid();
+      const rendered = renderPage(page, grid);
+      drawMatrix(this._previewCanvas, rendered.pixels, { ...this._cells(11, grid.width * grid.scale), icon: rendered.icon, glow: true, ...grid });
       this._previewNote.textContent = [rendered.overflow ? this.t("overflow_note") : this.t("simulated_note"),
         rendered.effect ? this.t("effect_not_simulated", { name: rendered.effect }) : ""].filter(Boolean).join(" ");
     }

@@ -98,6 +98,12 @@ qu'une palette : celle du style de texte (arc-en-ciel, dégradé) l'emporte sur
 celle de l'effet. Les refus de l'horloge (`…/result`) sont affichés dans le
 panneau, et les effets, météos et palettes sont lus sur `state/capabilities`.
 
+Aperçu : le simulateur lit les clés et les dessins NG (tableaux `["rect", …]`,
+`pixels`, `bitmap`). La taille de l'écran vient de `state/capabilities`
+(`display`) et `enlargeApps` de `state/settings` : sur un TC002, les apps sont
+dessinées sur une grille de 26 × 8, chaque pixel allumant 2 × 2 LED, comme sur
+l'horloge.
+
 ## 5. Configuration (interface uniquement)
 
 ### 5.1 Une entrée par horloge

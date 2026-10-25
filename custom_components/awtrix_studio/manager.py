@@ -34,7 +34,7 @@ from .const import (
     SUBENTRY_TYPE_INDICATOR,
 )
 from .display import CONF_DISPLAY
-from .drivers import FirmwareDriver, LoopState, Screen
+from .drivers import DisplayInfo, FirmwareDriver, LoopState, Screen
 from .icons import IconStore
 from .live_app import AppConfig, LiveApp
 from .loop import clean_order, desired_loop
@@ -141,6 +141,8 @@ class ClockManager:
         self._order_pending = False
         self._online: bool | None = None
         self._capabilities: dict[str, list[str]] | None = None
+        self._display_size: tuple[int, int] | None = None
+        self._enlarge: bool | None = None
         # The live app or indicator publishing on each topic.
         self._by_topic: dict[str, LiveApp] = {}
 
@@ -175,6 +177,16 @@ class ClockManager:
     def capabilities(self) -> dict[str, list[str]] | None:
         """Return the effects, overlays and palettes the clock offers, if known."""
         return self._capabilities
+
+    @property
+    def display(self) -> DisplayInfo:
+        """Return the clock's display size, and how large apps are drawn."""
+        if self._display_size is None:
+            return DisplayInfo()
+        width, height = self._display_size
+        # A TC002 draws apps on a half-size grid unless told otherwise.
+        scale = 2 if height >= 16 and self._enlarge is not False else 1
+        return DisplayInfo(width, height, scale)
 
     @property
     def order(self) -> list[str]:
@@ -235,6 +247,10 @@ class ClockManager:
         if topic := self.driver.capabilities_topic:
             self._unsubscribers.append(
                 await mqtt.async_subscribe(self.hass, topic, self._on_capabilities)
+            )
+        if topic := self.driver.settings_topic:
+            self._unsubscribers.append(
+                await mqtt.async_subscribe(self.hass, topic, self._on_settings)
             )
         for topic in self.driver.result_topics:
             self._unsubscribers.append(
@@ -506,8 +522,25 @@ class ClockManager:
         if isinstance(payload, bytes):
             payload = payload.decode(errors="replace")
         capabilities = self.driver.parse_capabilities(str(payload))
+        size = self.driver.parse_display_size(str(payload))
+        changed = False
         if capabilities is not None and capabilities != self._capabilities:
             self._capabilities = capabilities
+            changed = True
+        if size is not None and size != self._display_size:
+            self._display_size = size
+            changed = True
+        if changed:
+            self._notify()
+
+    @callback
+    def _on_settings(self, msg: mqtt.ReceiveMessage) -> None:
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            payload = payload.decode(errors="replace")
+        enlarge = self.driver.parse_enlarge(str(payload))
+        if enlarge is not None and enlarge != self._enlarge:
+            self._enlarge = enlarge
             self._notify()
 
     @callback

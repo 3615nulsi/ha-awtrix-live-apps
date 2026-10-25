@@ -212,3 +212,16 @@ def test_ng_capabilities_and_results() -> None:
     )
     assert driver.parse_result(topic, "nope") is None
     assert driver.parse_result("awtrixNG/cmd/apps/pushed/tram", "{}") is None
+
+
+def test_ng_display_size_and_enlarge() -> None:
+    """The display size comes with the capabilities, double size with the settings."""
+    driver = AwtrixNGDriver("awtrixNG")
+    assert driver.parse_display_size(
+        json.dumps({"display": {"width": 52, "height": 16, "configurable": False}})
+    ) == (52, 16)
+    for bad in ({"display": {"width": 0, "height": 8}}, {"display": "52x16"}, []):
+        assert driver.parse_display_size(json.dumps(bad)) is None
+    assert driver.settings_topic == "awtrixNG/state/settings"
+    assert driver.parse_enlarge('{"enlargeApps": false}') is False
+    assert driver.parse_enlarge('{"brightness": 3}') is None

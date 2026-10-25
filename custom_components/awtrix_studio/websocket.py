@@ -157,6 +157,15 @@ def _snapshot(entry: ConfigEntry, manager: ClockManager | None) -> dict[str, Any
         "order": clean_order(entry.options.get(CONF_APP_ORDER)),
         "loop": manager.loop if manager else None,
         "capabilities": manager.capabilities if manager else None,
+        "display": (
+            {
+                "width": manager.display.width,
+                "height": manager.display.height,
+                "scale": manager.display.scale,
+            }
+            if manager
+            else {"width": 32, "height": 8, "scale": 1}
+        ),
         "features": {
             "screen": bool(driver and driver.screen_topic),
             "navigate": bool(driver and driver.navigate(True)),

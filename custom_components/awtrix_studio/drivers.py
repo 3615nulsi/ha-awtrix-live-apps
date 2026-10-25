@@ -38,6 +38,16 @@ class Screen:
 
 
 @dataclass(frozen=True, slots=True)
+class DisplayInfo:
+    """How the clock draws apps."""
+
+    width: int = AWTRIX3_WIDTH
+    height: int = AWTRIX3_HEIGHT
+    # Apps drawn at double size (TC002): each app pixel lights 2 x 2.
+    scale: int = 1
+
+
+@dataclass(frozen=True, slots=True)
 class LoopState:
     """The app loop as read from the clock."""
 
@@ -74,7 +84,8 @@ def _seconds(value: Any) -> float | None:
     return float(value)
 
 
-def _screen(width: Any, height: Any, pixels: Any) -> Screen | None:
+def _size(width: Any, height: Any) -> tuple[int, int] | None:
+    """Return a plausible display size, else None."""
     if (
         not isinstance(width, int)
         or not isinstance(height, int)
@@ -83,6 +94,14 @@ def _screen(width: Any, height: Any, pixels: Any) -> Screen | None:
         or width <= 0
         or height <= 0
         or width * height > MAX_SCREEN_PIXELS
+    ):
+        return None
+    return width, height
+
+
+def _screen(width: Any, height: Any, pixels: Any) -> Screen | None:
+    if (
+        _size(width, height) is None
         or not isinstance(pixels, list)
         or len(pixels) != width * height
     ):
@@ -229,6 +248,19 @@ class FirmwareDriver(ABC):
 
     def parse_capabilities(self, payload: str) -> dict[str, list[str]] | None:
         """Return the names the clock offers, by kind."""
+        return None
+
+    def parse_display_size(self, payload: str) -> tuple[int, int] | None:
+        """Return the display's (width, height) from the capabilities message."""
+        return None
+
+    @property
+    def settings_topic(self) -> str | None:
+        """Return the topic carrying the clock's settings, if any."""
+        return None
+
+    def parse_enlarge(self, payload: str) -> bool | None:
+        """Return whether apps are drawn at double size, from the settings."""
         return None
 
     @property
@@ -504,6 +536,25 @@ class AwtrixNGDriver(FirmwareDriver):
                     if isinstance(name, str) and NAME_RE.fullmatch(name)
                 ]
         return capabilities
+
+    def parse_display_size(self, payload: str) -> tuple[int, int] | None:
+        """`display: {"width": 52, "height": 16}` on a TC002."""
+        data = _json(payload)
+        display = data.get("display") if isinstance(data, dict) else None
+        if not isinstance(display, dict):
+            return None
+        return _size(display.get("width"), display.get("height"))
+
+    @property
+    def settings_topic(self) -> str:
+        """The settings, on every change (retained)."""
+        return f"{self.prefix}/state/settings"
+
+    def parse_enlarge(self, payload: str) -> bool | None:
+        """`enlargeApps` (TC002, on by default)."""
+        data = _json(payload)
+        value = data.get("enlargeApps") if isinstance(data, dict) else None
+        return value if isinstance(value, bool) else None
 
     @property
     def result_topics(self) -> list[str]:

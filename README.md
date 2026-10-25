@@ -201,7 +201,7 @@ Yes. Awtrix Studio only touches the apps and indicators you create with it, so e
 <details>
 <summary><b>Does it work with AWTRIX NG?</b></summary>
 
-Yes, including the Ulanzi TC002, which runs AWTRIX NG. Pick **Detect automatically** when adding the clock. Simple apps, indicators and display options are written in NG's own JSON for you, the loop order is stored by the clock, and animated icons play. In template mode, write NG's JSON: the clock refuses unknown keys, and the panel shows what it refused. The simulated preview does not draw NG drawings or the TC002's larger screen yet; the **Real screen** tab does.
+Yes, including the Ulanzi TC002, which runs AWTRIX NG. Pick **Detect automatically** when adding the clock. Simple apps, indicators and display options are written in NG's own JSON for you, the loop order is stored by the clock, and animated icons play. In template mode, write NG's JSON: the clock refuses unknown keys, and the panel shows what it refused. The preview draws NG drawings, and on a TC002 shows apps the way the clock does: at double size, on a 26 × 8 grid.
 </details>
 
 <details>
