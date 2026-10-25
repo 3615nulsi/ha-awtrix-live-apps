@@ -4,6 +4,7 @@
 
 **Affichez tout ce que vous voulez de Home Assistant sur votre horloge AWTRIX, et laissez-la se mettre à jour toute seule.**
 Sans automatisation, sans blueprint, sans YAML.
+Compatible **AWTRIX 3** et **AWTRIX NG** : Ulanzi TC001, Ulanzi TC002 et horloges DIY.
 
 [![Ouvrir dans HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=3615nulsi&repository=ha-awtrix-studio&category=integration)
 
@@ -27,9 +28,23 @@ Sans automatisation, sans blueprint, sans YAML.
 - **Les trois indicateurs colorés** de l'horloge, pilotés de la même façon.
 - **Un Home Assistant en meilleure santé.** Les apps ne sont mises à jour que quand leurs données changent, et ne laissent rien dans la base d'historique. L'approche habituelle, « une automatisation toutes les quelques secondes », peut écrire des centaines de milliers d'entrées par jour.
 
+## ⏰ Horloges prises en charge
+
+Awtrix Studio pilote les horloges sous l'un ou l'autre firmware, et les reconnaît tout seul quand vous ajoutez une horloge.
+
+| | AWTRIX 3 | AWTRIX NG |
+|---|---|---|
+| **Horloges** | Ulanzi TC001, horloges DIY à ESP32 | Ulanzi TC002, et TC001 ou horloges DIY à ESP32 flashées avec NG |
+| **Écran** | 32 × 8 | 32 × 8 ; sur le TC002, 52 × 16, les apps étant dessinées en double taille sur une grille de 26 × 8 |
+| **Apps simples, indicateurs, options d'affichage** | ✅ | ✅ écrits pour vous dans le JSON propre à NG |
+| **Mode modèle** | JSON AWTRIX 3 | JSON AWTRIX NG ; les clés refusées par l'horloge sont affichées dans le panneau |
+| **Icônes LaMetric animées** | déposées sur l'horloge par sa page web | envoyées avec l'app |
+| **Ordre des apps** | réglé par la page web de l'horloge, rétabli quand une app revient | mémorisé par l'horloge elle-même |
+| **Absent de ce firmware** | – | texte en haut, conservation d'une app après un redémarrage |
+
 ## 🚀 Démarrer en 3 étapes
 
-Il vous faut Home Assistant 2025.8 ou plus récent, l'[intégration MQTT](https://www.home-assistant.io/integrations/mqtt/), et une horloge [AWTRIX 3](https://blueforcer.github.io/awtrix3/) (par exemple l'Ulanzi TC001) reliée au même broker MQTT.
+Il vous faut Home Assistant 2025.8 ou plus récent, l'[intégration MQTT](https://www.home-assistant.io/integrations/mqtt/), et une horloge sous [AWTRIX 3](https://blueforcer.github.io/awtrix3/) ou [AWTRIX NG](https://blueforcer.github.io/awtrix-ng/), reliée au même broker MQTT. Sous AWTRIX NG, MQTT reste désactivé tant que vous ne l'activez pas dans la page web de l'horloge (**System → MQTT**).
 
 1. **Installer.** Cliquez sur le bouton **Ouvrir dans HACS** ci-dessus, puis **Télécharger**, et redémarrez Home Assistant.
    <details><summary>Sans le bouton</summary>
@@ -37,7 +52,7 @@ Il vous faut Home Assistant 2025.8 ou plus récent, l'[intégration MQTT](https:
    Dans HACS, ouvrez le menu ⋮ → **Dépôts personnalisés**, ajoutez `https://github.com/3615nulsi/ha-awtrix-studio` en tant qu'**Intégration**, puis cherchez **Awtrix Studio** et téléchargez-la. Ou copiez à la main `custom_components/awtrix_studio` dans votre dossier de configuration.
    </details>
 
-2. **Ajouter l'horloge.** Allez dans **Paramètres → Appareils et services → Ajouter une intégration → Awtrix Studio**, et saisissez le préfixe MQTT de l'horloge (il figure dans ses réglages MQTT, par exemple `awtrix_1f1b94`).
+2. **Ajouter l'horloge.** Allez dans **Paramètres → Appareils et services → Ajouter une intégration → Awtrix Studio**, et saisissez le préfixe MQTT de l'horloge (il figure dans ses réglages MQTT, par exemple `awtrix_1f1b94`). Laissez le firmware sur **Détecter automatiquement** : Awtrix Studio interroge l'horloge, qui doit être allumée et connectée à MQTT.
 
 3. **Créer votre première app.** Ouvrez **Awtrix Studio** dans la barre latérale, cliquez sur **Ajouter une app**, choisissez un capteur… et regardez-le apparaître sur l'horloge. 🎉
 
@@ -77,13 +92,13 @@ Vous avez commencé en mode simple et voulez aller plus loin ? **Convertir en mo
 
 ### Les options d'affichage
 
-Chaque app, dans les deux modes, a une section **Affichage** pour le reste des réglages d'une app AWTRIX : durée d'affichage, nombre de défilements d'un texte long, vitesse de défilement, comportement de l'icône pendant le défilement, majuscules, centrage, texte en haut, texte arc-en-ciel ou en dégradé de deux couleurs, texte clignotant ou en fondu, couleur de fond, l'un des 19 effets de fond de l'horloge (avec sa vitesse, sa palette et le fondu des couleurs), une météo par-dessus (neige, pluie, orage…), et la conservation de l'app par l'horloge après un redémarrage. Un réglage laissé tel quel suit celui de l'horloge. En mode modèle, ce sont des valeurs par défaut : une clé fixée par votre modèle reste prioritaire.
+Chaque app, dans les deux modes, a une section **Affichage** pour le reste des réglages d'une app AWTRIX : durée d'affichage, nombre de défilements d'un texte long, vitesse de défilement, comportement de l'icône pendant le défilement, majuscules, centrage, texte en haut, texte arc-en-ciel ou en dégradé de deux couleurs, texte clignotant ou en fondu, couleur de fond, l'un des 19 effets de fond de l'horloge (avec sa vitesse, sa palette et le fondu des couleurs), une météo par-dessus (neige, pluie, orage…), et la conservation de l'app par l'horloge après un redémarrage. Un réglage laissé tel quel suit celui de l'horloge. En mode modèle, ce sont des valeurs par défaut : une clé fixée par votre modèle reste prioritaire. Sous AWTRIX NG, les effets, météos et palettes proposés sont ceux que l'horloge annonce, la vitesse de l'effet est un multiplicateur (2 va deux fois plus vite), et le texte arc-en-ciel ou en dégradé partage avec l'effet de fond l'unique palette de l'app.
 
 ### L'ordre des apps
 
 **Ordre** liste toute la boucle de l'horloge, y compris ses apps natives (heure, date, température…) et celles envoyées par d'autres outils. Faites glisser les apps ou utilisez les flèches, puis enregistrez. L'horloge suit ensuite cet ordre : une app qui revient après avoir été masquée reprend sa place au lieu de finir en bout de boucle.
 
-AWTRIX ne permet de réordonner les apps que par sa page web : Awtrix Studio utilise donc l'adresse que l'horloge annonce en MQTT, comme pour les icônes animées. Si la page web n'est pas joignable (ou protégée par mot de passe), l'ordre est conservé et appliqué dès que possible.
+AWTRIX 3 ne permet de réordonner les apps que par sa page web : Awtrix Studio utilise donc l'adresse que l'horloge annonce en MQTT, comme pour les icônes animées. Si la page web n'est pas joignable (ou protégée par mot de passe), l'ordre est conservé et appliqué dès que possible. AWTRIX NG mémorise l'ordre lui-même : il est envoyé une fois, et les apps que vous avez désactivées sur l'horloge le restent.
 
 ### Les indicateurs
 
@@ -93,9 +108,11 @@ L'horloge a trois petits voyants colorés sur le bord droit de l'écran. Allumez
 
 **Exporter** enregistre les apps et indicateurs choisis dans un petit fichier JSON, ou les copie pour les coller dans un message de forum. **Importer** lit un tel fichier sur une autre horloge (ou un autre Home Assistant) et montre exactement ce qui va se passer avant de modifier quoi que ce soit : un nom déjà pris reçoit un nom libre ou peut remplacer l'app existante, les entités absentes de cette installation sont listées, et les modèles peuvent être lus avant d'être acceptés.
 
-Les apps simples décrivent *quoi* afficher, pas comment un firmware le dessine : elles passent donc d'AWTRIX 3 à AWTRIX NG et inversement. Les apps en mode modèle contiennent du JSON AWTRIX 3 et sont signalées si on les importe sur un autre firmware.
+Les apps simples décrivent *quoi* afficher, pas comment un firmware le dessine : elles passent donc d'AWTRIX 3 à AWTRIX NG et inversement. Les apps en mode modèle contiennent le JSON du firmware de leur horloge, et sont signalées si on les importe sur une horloge sous l'autre firmware.
 
 ## 📝 Exemples de modèles
+
+Ces exemples sont écrits pour AWTRIX 3. Sous AWTRIX NG, quelques clés changent : `color` devient `textColor`, `blinkText` devient `textBlinkMs`, `"center": true` devient `"textAlign": "center"`, `progressC` devient `progressColor`, et un dessin est un tableau comme `["pixel", 20, 7, "#EF7D00"]` au lieu de `{"dp": [20, 7, "#EF7D00"]}`. Tous les changements sont listés dans le guide de NG [Coming from AWTRIX 3](https://github.com/Blueforcer/awtrix-ng/blob/main/docs/guides/migrating-from-awtrix3.md).
 
 <details>
 <summary><b>Une seule page</b></summary>
@@ -170,7 +187,7 @@ Bleu quand vous injectez, du vert au rouge quand vous consommez sur le réseau. 
 ```
 </details>
 
-Toutes les clés de l'[API des apps personnalisées AWTRIX](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) fonctionnent : `text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`, etc. Écrivez `"icon": "lametric:2422"` pour utiliser une icône de la galerie LaMetric sans la télécharger sur l'horloge.
+Toutes les clés de l'API de l'horloge fonctionnent : celles des [apps personnalisées AWTRIX 3](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) (`text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`…) ou des [apps poussées AWTRIX NG](https://github.com/Blueforcer/awtrix-ng/blob/main/docs/reference/payload.md) (`text`, `textColor`, `icon`, `draw`, `progress`, `textBlinkMs`, `effect`…). Écrivez `"icon": "lametric:2422"` pour utiliser une icône de la galerie LaMetric sans la télécharger sur l'horloge.
 
 ## ❓ Questions fréquentes
 
@@ -199,9 +216,14 @@ Oui. Awtrix Studio ne touche qu'aux apps et indicateurs créés avec elle : tout
 </details>
 
 <details>
-<summary><b>Est-ce compatible avec AWTRIX NG ?</b></summary>
+<summary><b>Comment passer une horloge d'AWTRIX 3 à AWTRIX NG ?</b></summary>
 
-Oui, y compris l'Ulanzi TC002, qui fonctionne sous AWTRIX NG. Choisissez **Détecter automatiquement** à l'ajout de l'horloge. Les apps simples, les indicateurs et les options d'affichage sont écrits pour vous dans le JSON propre à NG, l'ordre de la boucle est mémorisé par l'horloge, et les icônes animées s'animent. En mode modèle, écrivez le JSON de NG : l'horloge refuse les clés inconnues, et le panneau affiche ce qu'elle a refusé. L'aperçu dessine les dessins NG et, sur un TC002, montre les apps comme l'horloge : en double taille, sur une grille de 26 × 8.
+1. **Exportez** ses apps depuis le panneau, avant de flasher NG.
+2. Flashez AWTRIX NG et activez MQTT dans la page web de l'horloge (**System → MQTT**), avec un préfixe.
+3. **Ajoutez à nouveau l'horloge** dans Awtrix Studio, avec **Détecter automatiquement**. Pour garder le même préfixe, supprimez d'abord l'ancienne horloge.
+4. **Importez** le fichier. Les apps simples passent telles quelles. Les apps en mode modèle sont signalées : réécrivez-les avec les clés de NG (voir les [exemples de modèles](#-exemples-de-modèles)) ; si l'horloge en refuse une, le panneau indique la clé en cause.
+5. Les icônes désignées par un numéro étaient des fichiers de l'horloge, effacés par le flash de NG : écrivez plutôt `lametric:<numéro>`, et Awtrix Studio les envoie avec l'app.
+6. Une fois que tout fonctionne, supprimez l'ancienne horloge si elle est encore là.
 </details>
 
 <details>
@@ -223,8 +245,9 @@ Les apps sont renvoyées automatiquement, de même quand MQTT se reconnecte.
 
 - Le modèle de chaque app est suivi par le moteur de modèles de Home Assistant : il n'est recalculé que quand une entité qu'il utilise change.
 - Les changements de données sont limités à un message par seconde et par app au maximum.
-- AWTRIX annonce l'app à l'écran sur `<prefix>/stats/currentApp` ; par défaut, les pages n'alternent que pendant que l'app est affichée.
-- L'uptime de l'horloge, lu sur `<prefix>/stats`, révèle un redémarrage ; les apps sont alors renvoyées.
+- L'horloge annonce l'app à l'écran (`<prefix>/stats/currentApp` sous AWTRIX 3, `<prefix>/state/apps/active` sous AWTRIX NG) ; par défaut, les pages n'alternent que pendant que l'app est affichée.
+- Un redémarrage se repère à l'uptime de l'horloge (`<prefix>/stats` sous AWTRIX 3), ou à son retour `online` (`<prefix>/availability` sous AWTRIX NG) ; les apps sont alors renvoyées.
+- Sous AWTRIX NG, l'horloge répond à chaque app reçue (`…/result`) : un refus est affiché dans le panneau.
 - Les messages partent directement par le client MQTT : pas d'appel de service, pas d'événement.
 - Chaque app et chaque indicateur a une entité **interrupteur** : l'éteindre retire l'app de l'horloge (ou éteint l'indicateur) en gardant ses réglages. Son état survit aux redémarrages.
 - L'action `awtrix_studio.refresh` renvoie toutes les apps et tous les indicateurs activés.
