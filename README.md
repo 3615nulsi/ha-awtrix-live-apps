@@ -93,7 +93,7 @@ The clock has three small colored lights on the right edge of its screen. Light 
 
 **Export** saves the apps and indicators you pick to a small JSON file, or copies it so you can paste it in a forum post. **Import** reads such a file on another clock (or another Home Assistant) and shows you exactly what will happen before anything changes: names already taken get a free name or can replace the existing app, entities that don't exist on this installation are listed, and templates can be read before you accept them.
 
-Simple apps describe *what* to show, not how a firmware draws it, so they will also move to future firmware such as AWTRIX NG. Template apps contain AWTRIX 3 JSON and are flagged when imported on another firmware.
+Simple apps describe *what* to show, not how a firmware draws it, so they also move between AWTRIX 3 and AWTRIX NG. Template apps contain AWTRIX 3 JSON and are flagged when imported on another firmware.
 
 ## 📝 Template examples
 
@@ -201,7 +201,7 @@ Yes. Awtrix Studio only touches the apps and indicators you create with it, so e
 <details>
 <summary><b>Does it work with AWTRIX NG?</b></summary>
 
-Not yet. AWTRIX NG uses a completely different API; support is planned.
+Yes, including the Ulanzi TC002, which runs AWTRIX NG. Pick **Detect automatically** when adding the clock. Simple apps, indicators and display options are written in NG's own JSON for you, the loop order is stored by the clock, and animated icons play. In template mode, write NG's JSON: the clock refuses unknown keys, and the panel shows what it refused. The preview draws NG drawings, and on a TC002 shows apps the way the clock does: at double size, on a 26 × 8 grid.
 </details>
 
 <details>

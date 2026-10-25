@@ -42,3 +42,14 @@ def test_desired_loop_keeps_every_app() -> None:
     assert wanted == ["new", "tram", "Date", "other", "Time"]
     assert sorted(wanted) == sorted(current)
     assert desired_loop(current, []) == current
+
+
+def test_desired_loop_can_keep_absent_apps() -> None:
+    """For a clock that reserves places, missing apps keep theirs."""
+    assert desired_loop(
+        ["Time", "tram"], ["co2", "tram", "Time"], keep_absent=True
+    ) == [
+        "co2",
+        "tram",
+        "Time",
+    ]

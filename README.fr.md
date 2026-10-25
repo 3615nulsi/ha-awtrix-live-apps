@@ -93,7 +93,7 @@ L'horloge a trois petits voyants colorés sur le bord droit de l'écran. Allumez
 
 **Exporter** enregistre les apps et indicateurs choisis dans un petit fichier JSON, ou les copie pour les coller dans un message de forum. **Importer** lit un tel fichier sur une autre horloge (ou un autre Home Assistant) et montre exactement ce qui va se passer avant de modifier quoi que ce soit : un nom déjà pris reçoit un nom libre ou peut remplacer l'app existante, les entités absentes de cette installation sont listées, et les modèles peuvent être lus avant d'être acceptés.
 
-Les apps simples décrivent *quoi* afficher, pas comment un firmware le dessine : elles passeront donc aussi sur de futurs firmwares comme AWTRIX NG. Les apps en mode modèle contiennent du JSON AWTRIX 3 et sont signalées si on les importe sur un autre firmware.
+Les apps simples décrivent *quoi* afficher, pas comment un firmware le dessine : elles passent donc d'AWTRIX 3 à AWTRIX NG et inversement. Les apps en mode modèle contiennent du JSON AWTRIX 3 et sont signalées si on les importe sur un autre firmware.
 
 ## 📝 Exemples de modèles
 
@@ -201,7 +201,7 @@ Oui. Awtrix Studio ne touche qu'aux apps et indicateurs créés avec elle : tout
 <details>
 <summary><b>Est-ce compatible avec AWTRIX NG ?</b></summary>
 
-Pas encore. AWTRIX NG utilise une API complètement différente ; sa prise en charge est prévue.
+Oui, y compris l'Ulanzi TC002, qui fonctionne sous AWTRIX NG. Choisissez **Détecter automatiquement** à l'ajout de l'horloge. Les apps simples, les indicateurs et les options d'affichage sont écrits pour vous dans le JSON propre à NG, l'ordre de la boucle est mémorisé par l'horloge, et les icônes animées s'animent. En mode modèle, écrivez le JSON de NG : l'horloge refuse les clés inconnues, et le panneau affiche ce qu'elle a refusé. L'aperçu dessine les dessins NG et, sur un TC002, montre les apps comme l'horloge : en double taille, sur une grille de 26 × 8.
 </details>
 
 <details>

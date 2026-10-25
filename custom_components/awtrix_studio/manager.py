@@ -34,10 +34,10 @@ from .const import (
     SUBENTRY_TYPE_INDICATOR,
 )
 from .display import CONF_DISPLAY
-from .drivers import FirmwareDriver
+from .drivers import DisplayInfo, FirmwareDriver, LoopState, Screen
 from .icons import IconStore
 from .live_app import AppConfig, LiveApp
-from .loop import clean_order, desired_loop, parse_loop
+from .loop import clean_order, desired_loop
 from .templates import (
     InvalidSimpleOptionsError,
     build_app_template,
@@ -61,15 +61,15 @@ ORDER_CHECK_INTERVAL = timedelta(seconds=60)
 _LOGGER = logging.getLogger(__name__)
 
 
-def subentry_template(subentry: ConfigSubentry) -> str:
+def subentry_template(subentry: ConfigSubentry, firmware: str) -> str:
     """Return the template of an app or indicator, generating it in simple mode."""
     data = subentry.data
     if data.get(CONF_MODE) != MODE_SIMPLE:
         return data[CONF_TEMPLATE]
     try:
         if subentry.subentry_type == SUBENTRY_TYPE_INDICATOR:
-            return build_indicator_template(data)
-        return build_app_template(data)
+            return build_indicator_template(data, firmware)
+        return build_app_template(data, firmware)
     except InvalidSimpleOptionsError as err:
         _LOGGER.error("Cannot build %s: %s", subentry.title, err)
         return "{}"
@@ -82,13 +82,13 @@ def subentry_topic(driver: FirmwareDriver, subentry: ConfigSubentry) -> str:
     return driver.app_topic(subentry.data[CONF_APP_NAME])
 
 
-def app_config_from_subentry(subentry: ConfigSubentry) -> AppConfig:
+def app_config_from_subentry(subentry: ConfigSubentry, firmware: str) -> AppConfig:
     """Build the engine configuration of an app or indicator."""
     data = subentry.data
     if subentry.subentry_type == SUBENTRY_TYPE_INDICATOR:
         return AppConfig(
             name=f"indicator{data[CONF_INDICATOR]}",
-            template=subentry_template(subentry),
+            template=subentry_template(subentry, firmware),
             page_interval=DEFAULT_PAGE_INTERVAL,
             cycle_only_on_screen=True,
             hide_when_empty=True,
@@ -98,7 +98,7 @@ def app_config_from_subentry(subentry: ConfigSubentry) -> AppConfig:
     simple = data.get(CONF_MODE) == MODE_SIMPLE
     return AppConfig(
         name=data[CONF_APP_NAME],
-        template=subentry_template(subentry),
+        template=subentry_template(subentry, firmware),
         page_interval=float(data.get(CONF_PAGE_INTERVAL, DEFAULT_PAGE_INTERVAL)),
         cycle_only_on_screen=bool(
             data.get(CONF_CYCLE_ONLY_ON_SCREEN, DEFAULT_CYCLE_ONLY_ON_SCREEN)
@@ -127,7 +127,7 @@ class ClockManager:
         self._current_app: str | None = None
         self._last_uptime: float | None = None
         self._listeners: list[Callable[[], None]] = []
-        self._screen_listeners: list[Callable[[list[int]], None]] = []
+        self._screen_listeners: list[Callable[[Screen], None]] = []
         self._screen_unsubscribers: list[Callable[[], None]] = []
         self._test_timers: dict[str, CALLBACK_TYPE] = {}
         # What each app was built from, to tell an order change from an edit.
@@ -138,6 +138,13 @@ class ClockManager:
         self._loop: list[str] | None = None
         self._order_timer: CALLBACK_TYPE | None = None
         self._order_lock = asyncio.Lock()
+        self._order_pending = False
+        self._online: bool | None = None
+        self._capabilities: dict[str, list[str]] | None = None
+        self._display_size: tuple[int, int] | None = None
+        self._enlarge: bool | None = None
+        # The live app or indicator publishing on each topic.
+        self._by_topic: dict[str, LiveApp] = {}
 
     @property
     def current_app(self) -> str | None:
@@ -167,6 +174,21 @@ class ClockManager:
         return self.driver.prefix
 
     @property
+    def capabilities(self) -> dict[str, list[str]] | None:
+        """Return the effects, overlays and palettes the clock offers, if known."""
+        return self._capabilities
+
+    @property
+    def display(self) -> DisplayInfo:
+        """Return the clock's display size, and how large apps are drawn."""
+        if self._display_size is None:
+            return DisplayInfo()
+        width, height = self._display_size
+        # A TC002 draws apps on a half-size grid unless told otherwise.
+        scale = 2 if height >= 16 and self._enlarge is not False else 1
+        return DisplayInfo(width, height, scale)
+
+    @property
     def order(self) -> list[str]:
         """Return the app loop order chosen by the user (may be empty)."""
         return list(self._order)
@@ -191,7 +213,7 @@ class ClockManager:
         app = LiveApp(
             self.hass,
             self.driver,
-            app_config_from_subentry(subentry),
+            app_config_from_subentry(subentry, self.driver.firmware),
             self._publish,
             topic=subentry_topic(self.driver, subentry),
         )
@@ -202,8 +224,10 @@ class ClockManager:
             subentry.subentry_type,
             dict(subentry.data),
         )
+        topic = subentry_topic(self.driver, subentry)
+        self._by_topic[topic] = app
         if subentry.subentry_type == SUBENTRY_TYPE_APP:
-            self._app_topics.add(subentry_topic(self.driver, subentry))
+            self._app_topics.add(topic)
         return app
 
     async def async_start(self) -> None:
@@ -215,6 +239,22 @@ class ClockManager:
         if topic := self.driver.status_topic:
             self._unsubscribers.append(
                 await mqtt.async_subscribe(self.hass, topic, self._on_status)
+            )
+        if topic := self.driver.online_topic:
+            self._unsubscribers.append(
+                await mqtt.async_subscribe(self.hass, topic, self._on_online)
+            )
+        if topic := self.driver.capabilities_topic:
+            self._unsubscribers.append(
+                await mqtt.async_subscribe(self.hass, topic, self._on_capabilities)
+            )
+        if topic := self.driver.settings_topic:
+            self._unsubscribers.append(
+                await mqtt.async_subscribe(self.hass, topic, self._on_settings)
+            )
+        for topic in self.driver.result_topics:
+            self._unsubscribers.append(
+                await mqtt.async_subscribe(self.hass, topic, self._on_result)
             )
         self._unsubscribers.append(
             mqtt.async_subscribe_connection_status(self.hass, self._on_connection)
@@ -268,7 +308,7 @@ class ClockManager:
     # ---------------------------------------------------------- screen mirror
 
     async def async_subscribe_screen(
-        self, listener: Callable[[list[int]], None]
+        self, listener: Callable[[Screen], None]
     ) -> CALLBACK_TYPE:
         """Stream the clock's screen to `listener` while subscribed."""
         self._screen_listeners.append(listener)
@@ -315,11 +355,11 @@ class ClockManager:
         payload = msg.payload
         if isinstance(payload, bytes):
             payload = payload.decode(errors="replace")
-        pixels = self.driver.parse_screen(str(payload))
-        if pixels is None:
+        screen = self.driver.parse_screen(str(payload))
+        if screen is None:
             return
         for listener in list(self._screen_listeners):
-            listener(pixels)
+            listener(screen)
 
     async def async_republish_all(self) -> None:
         """Publish every enabled app again."""
@@ -331,7 +371,7 @@ class ClockManager:
     async def _publish(self, topic: str, payload: str) -> None:
         # Icons from the LaMetric gallery are sent inline, nothing is stored
         # on the clock.
-        payload = await self.icons.async_resolve(payload, self.files)
+        payload = await self.icons.async_resolve(payload, self.files, self.driver)
         try:
             await mqtt.async_publish(self.hass, topic, payload, qos=0, retain=False)
         except HomeAssistantError as err:
@@ -349,14 +389,26 @@ class ClockManager:
     # ------------------------------------------------------------ loop order
 
     @callback
-    def set_order(self, order: Any) -> None:
-        """Use a new loop order and apply it soon."""
+    def set_order(self, order: Any, *, initial: bool = False) -> None:
+        """Use a new loop order and apply it soon.
+
+        A clock that stores the order itself already has it when Home
+        Assistant starts: it is only sent again when the user changes it.
+        """
         self._order = clean_order(order)
+        self._order_pending = bool(self._order) and not (
+            initial and self.driver.keeps_order
+        )
         self._schedule_order_check(0)
+
+    def _order_wanted(self) -> bool:
+        if not self._order or not self.driver.can_reorder:
+            return False
+        return self._order_pending or not self.driver.keeps_order
 
     @callback
     def _schedule_order_check(self, delay: float = ORDER_CHECK_DELAY) -> None:
-        if not self._order or self.driver.reorder_path is None:
+        if not self._order_wanted():
             return
         if self._order_timer is not None:
             self._order_timer()
@@ -371,38 +423,61 @@ class ClockManager:
 
     async def async_refresh_loop(self) -> list[str] | None:
         """Read the app loop from the clock; None if it cannot be reached."""
+        state = await self._async_read_loop()
+        return state.apps if state is not None else None
+
+    async def _async_read_loop(self) -> LoopState | None:
         path = self.driver.loop_path
         if path is None or self.files.address is None:
             return None
         try:
-            loop = parse_loop(await self.files.async_get_text(path))
+            state = self.driver.parse_loop(await self.files.async_get_text(path))
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
             _LOGGER.debug("Cannot read the app loop of %s: %s", self.prefix, err)
             return None
+        loop = state.apps if state is not None else None
         if loop != self._loop:
             self._loop = loop
             self._notify()
-        return loop
+        return state
 
     async def async_apply_order(self) -> None:
         """Rearrange the clock's loop to follow the chosen order, if needed."""
-        path = self.driver.reorder_path
-        if not self._order or path is None:
+        if not self._order_wanted():
             return
         async with self._order_lock:
-            current = await self.async_refresh_loop()
-            if not current:
+            # The loop is read first: AWTRIX 3 drops the apps a reorder leaves
+            # out, and AWTRIX NG needs the apps switched off on the clock.
+            state = await self._async_read_loop()
+            if state is None:
                 return
-            wanted = desired_loop(current, self._order)
-            if wanted == current:
+            if self.driver.keeps_order:
+                # Apps that are not there yet keep their place for later.
+                wanted = desired_loop(state.apps, self._order, keep_absent=True)
+            elif not state.apps:
                 return
-            try:
-                await self.files.async_post_json(path, wanted)
-            except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-                _LOGGER.debug("Cannot reorder the apps of %s: %s", self.prefix, err)
+            else:
+                wanted = desired_loop(state.apps, self._order)
+                if wanted == state.apps:
+                    return
+            if not await self._async_send_order(wanted, state.disabled):
                 return
-            self._loop = wanted
+            self._order_pending = False
+            self._loop = desired_loop(state.apps, self._order)
             self._notify()
+
+    async def _async_send_order(self, order: list[str], disabled: list[str]) -> bool:
+        if (message := self.driver.order_message(order, disabled)) is not None:
+            await self.async_send(message)
+            return True
+        if (path := self.driver.reorder_path) is None:
+            return False
+        try:
+            await self.files.async_post_json(path, order)
+        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+            _LOGGER.debug("Cannot reorder the apps of %s: %s", self.prefix, err)
+            return False
+        return True
 
     @callback
     def _on_current_app(self, msg: mqtt.ReceiveMessage) -> None:
@@ -437,6 +512,62 @@ class ClockManager:
         self._last_uptime = uptime
         if rebooted:
             _LOGGER.debug("Clock %s restarted, publishing apps again", self.prefix)
+            self.hass.async_create_task(
+                self.async_republish_all(), f"awtrix_studio republish {self.prefix}"
+            )
+
+    @callback
+    def _on_capabilities(self, msg: mqtt.ReceiveMessage) -> None:
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            payload = payload.decode(errors="replace")
+        capabilities = self.driver.parse_capabilities(str(payload))
+        size = self.driver.parse_display_size(str(payload))
+        changed = False
+        if capabilities is not None and capabilities != self._capabilities:
+            self._capabilities = capabilities
+            changed = True
+        if size is not None and size != self._display_size:
+            self._display_size = size
+            changed = True
+        if changed:
+            self._notify()
+
+    @callback
+    def _on_settings(self, msg: mqtt.ReceiveMessage) -> None:
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            payload = payload.decode(errors="replace")
+        enlarge = self.driver.parse_enlarge(str(payload))
+        if enlarge is not None and enlarge != self._enlarge:
+            self._enlarge = enlarge
+            self._notify()
+
+    @callback
+    def _on_result(self, msg: mqtt.ReceiveMessage) -> None:
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            payload = payload.decode(errors="replace")
+        result = self.driver.parse_result(msg.topic, str(payload))
+        if result is None or (app := self._by_topic.get(result[0])) is None:
+            return
+        if result[1] is not None and result[1] != app.clock_error:
+            _LOGGER.warning("The clock refused app '%s': %s", app.name, result[1])
+        app.async_set_clock_error(result[1])
+
+    @callback
+    def _on_online(self, msg: mqtt.ReceiveMessage) -> None:
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            payload = payload.decode(errors="replace")
+        online = self.driver.parse_online(str(payload))
+        if online is None:
+            return
+        came_back = online and self._online is False
+        self._online = online
+        if came_back:
+            # The clock restarted (or lost its connection) and dropped its apps.
+            _LOGGER.debug("Clock %s is back online, publishing apps again", self.prefix)
             self.hass.async_create_task(
                 self.async_republish_all(), f"awtrix_studio republish {self.prefix}"
             )

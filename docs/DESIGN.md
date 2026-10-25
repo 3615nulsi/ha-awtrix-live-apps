@@ -76,9 +76,33 @@ n° 3) : un modèle AWTRIX 3 ne s'affiche pas tel quel sur NG, il faut l'écrire
 avec les champs NG. La documentation fournira chaque exemple dans les deux
 formats.
 
-À confirmer pendant le développement, dans la documentation NG : le topic de
-l'app affichée, la suppression d'une app poussée, et le support des primitives
-de dessin (pixels, lignes) dans les apps poussées.
+Confirmé dans la documentation NG (v1.2) et mis en œuvre dans le pilote NG :
+
+| | AWTRIX 3 | AWTRIX NG |
+|---|---|---|
+| App affichée | `<préfixe>/stats/currentApp` | `<préfixe>/state/apps/active` (retenu) |
+| Supprimer une app | payload vide | payload vide |
+| Redémarrage | `uptime` qui repart à zéro | retour à `online` sur `<préfixe>/availability` (sur TC002, `uptimeSeconds` ne repart pas à zéro) |
+| Miroir d'écran | `sendscreen` → tableau de 256 couleurs | `cmd/screen/get` → `{"width","height","pixels"}` (52 × 16 sur TC002) |
+| Ordre des apps | HTTP seulement (`/api/reorder`), à réappliquer quand une app revient | MQTT (`cmd/apps/order`), mémorisé par l'horloge : envoyé une fois, avec la liste des apps désactivées lue en HTTP (`/api/v1/apps`) |
+| Icône inline | JPEG en Base64, première image seulement | data URL ; un GIF animé est joué (message limité à 8 Ko) |
+
+Les dessins existent sur NG, sous forme de tableaux (`["pixel", x, y, c]`).
+
+Contenu : les modèles générés en mode simple sont écrits dans le JSON du
+firmware de l'horloge (`textColor`, `progressColor`, `blinkMs`…). Les options
+d'affichage restent stockées avec les noms AWTRIX 3, validées pour le firmware
+de l'horloge (pas de `topText` ni de `save` sur NG, vitesse d'effet en
+multiplicateur), et traduites en clés NG à la publication. Sur NG, une app n'a
+qu'une palette : celle du style de texte (arc-en-ciel, dégradé) l'emporte sur
+celle de l'effet. Les refus de l'horloge (`…/result`) sont affichés dans le
+panneau, et les effets, météos et palettes sont lus sur `state/capabilities`.
+
+Aperçu : le simulateur lit les clés et les dessins NG (tableaux `["rect", …]`,
+`pixels`, `bitmap`). La taille de l'écran vient de `state/capabilities`
+(`display`) et `enlargeApps` de `state/settings` : sur un TC002, les apps sont
+dessinées sur une grille de 26 × 8, chaque pixel allumant 2 × 2 LED, comme sur
+l'horloge.
 
 ## 5. Configuration (interface uniquement)
 

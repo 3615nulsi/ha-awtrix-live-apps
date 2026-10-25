@@ -91,17 +91,59 @@ function mixColors(from, to, ratio) {
   return parseColor([channel(16), channel(8), channel(0)]);
 }
 
-/** Render one AWTRIX page into pixels. Returns {pixels, icon, overflow, effect}. */
-export function renderPage(page) {
-  const pixels = new Array(WIDTH * HEIGHT).fill(OFF);
-  const result = { pixels, icon: null, overflow: false, effect: null };
+/** Read an AWTRIX NG page with the AWTRIX 3 names the simulator draws. */
+function fromNG(page) {
+  const ng = ["textColor", "backgroundColor", "progressColor", "progressTrackColor", "textOffsetX", "textAlign"];
+  if (!ng.some((key) => key in page)) return page;
+  const out = { ...page };
+  if (page.textColor === "palette") {
+    if (page.palette === "Rainbow") out.rainbow = true;
+    else if (Array.isArray(page.palette) && page.palette.length >= 2) out.gradient = [page.palette[0], page.palette[page.palette.length - 1]];
+  } else if (page.textColor !== undefined) out.color = page.textColor;
+  if (page.backgroundColor !== undefined) out.background = page.backgroundColor;
+  if (page.progressColor !== undefined) out.progressC = page.progressColor;
+  if (page.progressTrackColor !== undefined) out.progressBC = page.progressTrackColor;
+  if (Number.isFinite(page.textOffsetX)) out.textOffset = page.textOffsetX;
+  if (page.textAlign === "start") out.center = false;
+  return out;
+}
+
+// AWTRIX NG draw commands are arrays named in full; AWTRIX 3 uses objects
+// keyed by a short code. Both are drawn by the same code.
+const NG_DRAW = { pixel: "dp", line: "dl", rect: "dr", rectFill: "df", circle: "dc", circleFill: "dfc", text: "dt", bitmap: "db" };
+const MAX_BITMAP = 64 * 32;
+
+function bitmapColors(data, count) {
+  if (Array.isArray(data)) return data.slice(0, count).map((v) => parseColor(v, "#000000"));
+  if (typeof data !== "string" || data.length > MAX_BITMAP * 4) return [];
+  // Base64 RGB888 (AWTRIX NG): three bytes per pixel.
+  let bytes;
+  try { bytes = atob(data); } catch (_err) { return []; }
+  const colors = [];
+  for (let i = 0; i + 2 < bytes.length && colors.length < count; i += 3) {
+    colors.push(parseColor([bytes.charCodeAt(i), bytes.charCodeAt(i + 1), bytes.charCodeAt(i + 2)]));
+  }
+  return colors;
+}
+
+/**
+ * Render one AWTRIX page into pixels, on a grid of `size` (32 × 8 unless
+ * told otherwise; a TC002 draws apps on 26 × 8 at double size).
+ * Returns {pixels, icon, overflow, effect, width, height}.
+ */
+export function renderPage(page, size = {}) {
+  const W = size.width ?? WIDTH;
+  const H = size.height ?? HEIGHT;
+  const pixels = new Array(W * H).fill(OFF);
+  const result = { pixels, icon: null, overflow: false, effect: null, width: W, height: H };
   if (!page || typeof page !== "object" || Array.isArray(page)) return result;
+  page = fromNG(page);
 
   const set = (x, y, color) => {
     x = Math.round(x);
     y = Math.round(y);
-    if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
-    pixels[y * WIDTH + x] = isBlack(color) ? OFF : color;
+    if (x < 0 || x >= W || y < 0 || y >= H) return;
+    pixels[y * W + x] = isBlack(color) ? OFF : color;
   };
 
   // Effects and overlays are animations: only named, not drawn.
@@ -116,12 +158,12 @@ export function renderPage(page) {
   const hasIcon = page.icon !== undefined && page.icon !== null && page.icon !== "";
   if (hasIcon) result.icon = String(page.icon);
   const areaStart = hasIcon ? 9 : 0;
-  const areaWidth = WIDTH - areaStart;
+  const areaWidth = W - areaStart;
 
   // Text: a string, or segments [{t, c}].
   const base = parseColor(page.color, "#FFFFFF");
   const segments = Array.isArray(page.text)
-    ? page.text.filter((s) => s && typeof s === "object").map((s) => ({ t: String(s.t ?? ""), c: parseColor(s.c, base) }))
+    ? page.text.filter((s) => s && typeof s === "object").map((s) => ({ t: String(s.t ?? s.text ?? ""), c: parseColor(s.c ?? s.color, base) }))
     : page.text !== undefined && page.text !== null
       ? [{ t: String(page.text), c: base }]
       : [];
@@ -153,7 +195,7 @@ export function renderPage(page) {
     const back = parseColor(page.progressBC, "#FFFFFF");
     const span = areaWidth;
     const lit = Math.round((Math.max(0, Math.min(100, page.progress)) / 100) * span);
-    for (let i = 0; i < span; i++) set(areaStart + i, 7, i < lit ? fill : back);
+    for (let i = 0; i < span; i++) set(areaStart + i, H - 1, i < lit ? fill : back);
   }
 
   // Drawing primitives.
@@ -180,9 +222,21 @@ export function renderPage(page) {
   const nums = (a, n) => a.length >= n && a.slice(0, n).every((v) => Number.isFinite(v));
   (Array.isArray(page.draw) ? page.draw : []).slice(0, 500).forEach((cmd) => {
     if (!cmd || typeof cmd !== "object") return;
-    const [kind] = Object.keys(cmd);
-    const a = cmd[kind];
-    if (!Array.isArray(a)) return;
+    let kind, a;
+    if (Array.isArray(cmd)) {
+      // ["pixels", color, x1, y1, x2, y2, …] has no AWTRIX 3 counterpart.
+      if (cmd[0] === "pixels") {
+        const c = parseColor(cmd[1]);
+        for (let i = 2; i + 1 < cmd.length && i < 2 + 2 * MAX_BITMAP; i += 2) if (Number.isFinite(cmd[i]) && Number.isFinite(cmd[i + 1])) set(cmd[i], cmd[i + 1], c);
+        return;
+      }
+      kind = NG_DRAW[cmd[0]];
+      a = cmd.slice(1);
+    } else {
+      [kind] = Object.keys(cmd);
+      a = cmd[kind];
+    }
+    if (!kind || !Array.isArray(a)) return;
     if (kind === "dp" && nums(a, 2)) set(a[0], a[1], parseColor(a[2]));
     else if (kind === "dl" && nums(a, 4)) line(a[0], a[1], a[2], a[3], parseColor(a[4]));
     else if (kind === "dr" && nums(a, 4)) {
@@ -191,7 +245,7 @@ export function renderPage(page) {
       line(a[0], a[1], a[0], a[1] + a[3] - 1, c); line(a[0] + a[2] - 1, a[1], a[0] + a[2] - 1, a[1] + a[3] - 1, c);
     } else if (kind === "df" && nums(a, 4)) {
       const c = parseColor(a[4]);
-      for (let x = 0; x < Math.min(a[2], WIDTH); x++) for (let y = 0; y < Math.min(a[3], HEIGHT); y++) set(a[0] + x, a[1] + y, c);
+      for (let x = 0; x < Math.min(a[2], W); x++) for (let y = 0; y < Math.min(a[3], H); y++) set(a[0] + x, a[1] + y, c);
     } else if (kind === "dc" && nums(a, 3)) circle(a[0], a[1], Math.min(a[2], 16), parseColor(a[3]), false);
     else if (kind === "dfc" && nums(a, 3)) circle(a[0], a[1], Math.min(a[2], 16), parseColor(a[3]), true);
     else if (kind === "dt" && nums(a, 2)) {
@@ -202,31 +256,38 @@ export function renderPage(page) {
         g.forEach((row, y) => Array.from(row).forEach((bit, dx) => { if (bit === "1") set(x + dx, a[1] + y, c); }));
         x += g[0].length + 1;
       });
+    } else if (kind === "db" && nums(a, 4) && a[2] > 0 && a[3] > 0) {
+      const w = Math.min(a[2], 64), hgt = Math.min(a[3], 32);
+      bitmapColors(a[4], w * hgt).forEach((c, i) => set(a[0] + (i % w), a[1] + Math.floor(i / w), c));
     }
   });
   return result;
 }
 
-const INDICATOR_PIXELS = {
-  1: [[31, 0], [30, 0], [31, 1]],
-  2: [[31, 3], [31, 4]],
-  3: [[31, 7], [30, 7], [31, 6]],
-};
+/** The pixels of each indicator, on the right edge of a grid. */
+function indicatorPixels(number, w, h) {
+  const middle = Math.floor(h / 2);
+  return {
+    1: [[w - 1, 0], [w - 2, 0], [w - 1, 1]],
+    2: [[w - 1, middle - 1], [w - 1, middle]],
+    3: [[w - 1, h - 1], [w - 2, h - 1], [w - 1, h - 2]],
+  }[number] || [];
+}
 
 /** Paint indicator pages ({number: page}) over rendered pixels. */
-export function addIndicators(pixels, indicators) {
+export function addIndicators(pixels, indicators, width = WIDTH, height = HEIGHT) {
   Object.entries(indicators || {}).forEach(([number, page]) => {
     if (!page || page.color === undefined) return;
     const color = parseColor(page.color, "#000000");
     if (isBlack(color)) return;
-    (INDICATOR_PIXELS[number] || []).forEach(([x, y]) => { pixels[y * WIDTH + x] = color; });
+    indicatorPixels(number, width, height).forEach(([x, y]) => { pixels[y * width + x] = color; });
   });
   return pixels;
 }
 
-/** Convert the clock's real screen (256 integers) into pixels. */
-export function screenToPixels(values) {
-  if (!Array.isArray(values) || values.length !== WIDTH * HEIGHT) return new Array(WIDTH * HEIGHT).fill(OFF);
+/** Convert the clock's real screen (width × height integers) into pixels. */
+export function screenToPixels(values, width = WIDTH, height = HEIGHT) {
+  if (!Array.isArray(values) || values.length !== width * height) return new Array(width * height).fill(OFF);
   return values.map((v) => (Number.isInteger(v) && v > 0 ? parseColor(v) : OFF));
 }
 
@@ -279,15 +340,21 @@ function iconPixels(entry) {
 }
 
 /**
- * Draw pixels on a canvas. `options`: {cell, gap, icon, offColor, glow}.
+ * Draw pixels on a canvas. `options`: {cell, gap, icon, offColor, glow,
+ * width, height, scale}; the size defaults to the 32 × 8 of AWTRIX 3. With
+ * `scale` 2 each pixel lights 2 × 2 LEDs, like apps on a TC002.
  * The canvas is redrawn when an icon finishes loading.
  */
 export function drawMatrix(canvas, pixels, options = {}) {
+  const cols = options.width ?? WIDTH;
+  const rows = options.height ?? HEIGHT;
+  const scale = options.scale ?? 1;
+  const leds = cols * scale, ledRows = rows * scale;
   const cell = options.cell ?? 10;
   const gap = options.gap ?? 2;
   const ratio = window.devicePixelRatio || 1;
-  const width = WIDTH * cell + (WIDTH - 1) * gap;
-  const height = HEIGHT * cell + (HEIGHT - 1) * gap;
+  const width = leds * cell + (leds - 1) * gap;
+  const height = ledRows * cell + (ledRows - 1) * gap;
   if (canvas.width !== Math.round(width * ratio)) {
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(height * ratio);
@@ -305,7 +372,7 @@ export function drawMatrix(canvas, pixels, options = {}) {
     if (entry) {
       const icon = iconPixels(entry);
       if (icon) {
-        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (icon[y * 8 + x]) drawn[y * WIDTH + x] = icon[y * 8 + x];
+        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (icon[y * 8 + x]) drawn[y * cols + x] = icon[y * 8 + x];
       } else {
         overlay = entry.image;
       }
@@ -313,9 +380,9 @@ export function drawMatrix(canvas, pixels, options = {}) {
   }
 
   const radius = Math.max(1, cell / 4);
-  for (let y = 0; y < HEIGHT; y++) {
-    for (let x = 0; x < WIDTH; x++) {
-      const color = drawn[y * WIDTH + x];
+  for (let y = 0; y < ledRows; y++) {
+    for (let x = 0; x < leds; x++) {
+      const color = drawn[Math.floor(y / scale) * cols + Math.floor(x / scale)];
       ctx.fillStyle = color || options.offColor || "#1A1A1E";
       if (color && options.glow) { ctx.shadowColor = color; ctx.shadowBlur = cell / 2; } else { ctx.shadowBlur = 0; }
       const px = x * (cell + gap), py = y * (cell + gap);
@@ -327,7 +394,7 @@ export function drawMatrix(canvas, pixels, options = {}) {
   ctx.shadowBlur = 0;
   if (overlay) {
     ctx.imageSmoothingEnabled = false;
-    const size = 8 * cell + 7 * gap;
+    const size = 8 * scale * cell + (8 * scale - 1) * gap;
     ctx.drawImage(overlay, 0, 0, size, size);
   }
 }

@@ -7,6 +7,7 @@ import pytest
 from custom_components.awtrix_studio.display import (
     InvalidDisplayError,
     apply_display,
+    ng_display,
     normalize_display,
 )
 
@@ -120,3 +121,76 @@ def test_apply_display_never_overrides_the_page() -> None:
         {"duration": 10, "effect": "Fade", "text": "a"},
         {"duration": 3, "effect": "Fade", "text": "b"},
     ]
+
+
+def test_ng_drops_what_it_lacks() -> None:
+    """NG has no topText, save or "clear" overlay; its effect speed is a factor."""
+    assert normalize_display(
+        {
+            "topText": True,
+            "save": True,
+            "effect": "Plasma",
+            "effectSettings": {"speed": 0.45, "palette": "Lava"},
+        },
+        "awtrix_ng",
+    ) == {"effect": "Plasma", "effectSettings": {"speed": 0.5, "palette": "Lava"}}
+    assert normalize_display(
+        {"effect": "Fade", "effectSettings": {"speed": 1}}, "awtrix_ng"
+    ) == {"effect": "Fade"}
+    with pytest.raises(InvalidDisplayError):
+        normalize_display({"overlay": "clear"}, "awtrix_ng")
+
+
+def test_ng_keys() -> None:
+    """Every option finds its NG key."""
+    assert ng_display(
+        {
+            "duration": 8,
+            "repeat": 2,
+            "textCase": 2,
+            "textOffset": 3,
+            "center": False,
+            "noScroll": True,
+            "scrollSpeed": 50,
+            "pushIcon": 1,
+            "fadeText": 400,
+            "background": "#102030",
+            "effect": "Plasma",
+            "effectSettings": {"speed": 0.5, "palette": "Lava", "blend": False},
+            "overlay": "snow",
+            "lifetimeMode": 1,
+        }
+    ) == {
+        "durationMs": 8000,
+        "repeat": 2,
+        "textCase": "asTyped",
+        "textOffsetX": 3,
+        "textAlign": "start",
+        "scroll": {"mode": "static", "speed": 50},
+        "iconMode": "pushOnce",
+        "textFadeMs": 400,
+        "backgroundColor": "#102030",
+        "effect": "Plasma",
+        "effectSpeed": 0.5,
+        "paletteBlend": False,
+        "palette": "Lava",
+        "overlay": "snow",
+        "lifetimeExpiry": "mark",
+    }
+    assert ng_display({"repeat": 0, "overlay": "clear"}) == {}
+
+
+def test_ng_text_palette_wins() -> None:
+    """A rainbow or gradient text paints the text from the app's one palette."""
+    pages = [{"text": "a", "textColor": "#FFFFFF"}, {"text": "b", "palette": "Ocean"}]
+    assert apply_display(
+        pages,
+        {"rainbow": True, "effect": "Plasma", "effectSettings": {"palette": "Lava"}},
+        "awtrix_ng",
+    ) == [
+        {"effect": "Plasma", "palette": "Rainbow", "text": "a", "textColor": "palette"},
+        {"effect": "Plasma", "palette": "Ocean", "text": "b"},
+    ]
+    assert apply_display(
+        pages[:1], {"gradient": ["#FF0000", "#0000FF"]}, "awtrix_ng"
+    ) == [{"palette": ["#FF0000", "#0000FF"], "text": "a", "textColor": "palette"}]

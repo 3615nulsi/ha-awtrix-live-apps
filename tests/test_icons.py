@@ -24,7 +24,7 @@ from pytest_homeassistant_custom_component.typing import (
 
 from custom_components.awtrix_studio.clock_files import ClockFiles, upload_form
 from custom_components.awtrix_studio.const import DATA_ICONS, DOMAIN
-from custom_components.awtrix_studio.drivers import Awtrix3Driver
+from custom_components.awtrix_studio.drivers import Awtrix3Driver, AwtrixNGDriver
 from custom_components.awtrix_studio.icons import (
     ICON_URL,
     SEARCH_URL,
@@ -344,3 +344,25 @@ def test_upload_form_keeps_the_path() -> None:
     writer = upload_form("/ICONS/58478.gif", b"GIF89a")()
     headers = [part.headers["Content-Disposition"] for part, _, _ in writer]
     assert headers == ['form-data; name="data"; filename="/ICONS/58478.gif"']
+
+
+async def test_ng_plays_animated_icons_inline(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """AWTRIX NG gets the GIF itself, unless the payload would be too large."""
+    gif = png(frames=3)
+    aioclient_mock.get(ICON_URL.format(id=9), content=gif)
+    aioclient_mock.get(ICON_URL.format(id=10), content=png())
+    store = IconStore(hass)
+    driver = AwtrixNGDriver("awtrixNG")
+    icon = convert(gif)
+
+    page = json.loads(await store.async_resolve('{"icon":"lametric:9"}', None, driver))
+    assert page["icon"] == f"data:image/gif;base64,{icon['gif']}"
+
+    page = json.loads(await store.async_resolve('{"icon":"lametric:10"}', None, driver))
+    assert page["icon"] == f"data:image/jpeg;base64,{convert(png())['jpeg']}"
+
+    big = json.dumps({"icon": "lametric:9", "text": "x" * 8000})
+    page = json.loads(await store.async_resolve(big, None, driver))
+    assert page["icon"] == f"data:image/jpeg;base64,{icon['jpeg']}"

@@ -39,6 +39,22 @@ const STARTER_INDICATOR_TEMPLATE = `{#- Render {"color": ...} to light the indic
 {}
 {%- endif -%}`;
 
+const NG_STARTER_APP_TEMPLATE = `{#- Render a JSON object (one page) or a list of objects
+    (pages that alternate). Any key of the AWTRIX NG pushed app API works;
+    unknown keys make the clock refuse the app. -#}
+{{ [
+  {"text": now().strftime('%H:%M'), "textColor": "#FFFFFF"},
+  {"text": states('sun.sun'), "textColor": "#FFB74D"}
+] | tojson }}`;
+
+const NG_STARTER_INDICATOR_TEMPLATE = `{#- Render {"color": ...} to light the indicator
+    (optionally with "blinkMs" or "fadeMs"), or {} to turn it off. -#}
+{%- if is_state('sun.sun', 'below_horizon') -%}
+{"color": "#FF8C00", "fadeMs": 2000}
+{%- else -%}
+{}
+{%- endif -%}`;
+
 // ------------------------------------------------------------------ helpers
 
 function h(tag, props, ...children) {
@@ -407,7 +423,9 @@ class AwtrixStudioPanel extends HTMLElement {
   _subscribeScreen() {
     if (!this._snapshot?.features?.screen) return;
     this._subscribe("screen", { type: "awtrix_studio/screen", entry_id: this._entryId }, (event) => {
-      this._screen = { pixels: screenToPixels(event.pixels), at: Date.now() };
+      const width = Number.isInteger(event.width) ? event.width : WIDTH;
+      const height = Number.isInteger(event.height) ? event.height : HEIGHT;
+      this._screen = { pixels: screenToPixels(event.pixels, width, height), width, height, at: Date.now() };
       this._drawMirror();
       if (this._view.name === "edit" && this._previewTab === "real") this._drawPreview();
     });
@@ -552,8 +570,9 @@ class AwtrixStudioPanel extends HTMLElement {
     const card = this._cards.get(item.subentry_id);
     if (!card) return;
     const page = item.pages[item.page_index] || item.pages[0];
-    const rendered = renderPage(page);
-    drawMatrix(card.canvas, rendered.pixels, { cell: 6, gap: 1, icon: rendered.icon });
+    const grid = this._appGrid();
+    const rendered = renderPage(page, grid);
+    drawMatrix(card.canvas, rendered.pixels, { ...this._cells(6, grid.width * grid.scale), gap: 1, icon: rendered.icon, ...grid });
     card.toggle.setAttribute("aria-checked", item.enabled ? "true" : "false");
     const visible = item.enabled && item.pages.length > 0;
     card.root.classList.toggle("dim", !visible);
@@ -562,12 +581,13 @@ class AwtrixStudioPanel extends HTMLElement {
     let text, kind = "";
     if (!item.enabled) text = this.t("disabled");
     else if (item.error) { text = this.t("failing"); kind = "error"; }
+    else if (item.clock_error) { text = this.t("clock_refused"); kind = "error"; }
     else if (!item.pages.length) text = this.t("hidden");
     else if (item.on_screen) { text = `${this.t("on_screen")}${item.pages.length > 1 ? " · " + this.t("pages_n", { n: item.pages.length }) : ""}`; kind = "screen-on"; }
     else { text = `${this.t("visible")}${item.pages.length > 1 ? " · " + this.t("pages_n", { n: item.pages.length }) : ""}`; kind = "ok"; }
     card.status.textContent = text;
     card.status.className = `status ${kind}`;
-    if (item.error) card.status.title = item.error; else card.status.removeAttribute("title");
+    if (item.error || item.clock_error) card.status.title = item.error || item.clock_error; else card.status.removeAttribute("title");
   }
 
   _buildIndicators() {
@@ -606,6 +626,28 @@ class AwtrixStudioPanel extends HTMLElement {
     });
   }
 
+  /** The grid apps are drawn on, and how many LEDs each of its pixels lights. */
+  _appGrid() {
+    const display = this._snapshot?.display || {};
+    const scale = display.scale || 1;
+    return {
+      width: display.width ? Math.floor(display.width / scale) : WIDTH,
+      height: display.height ? Math.floor(display.height / scale) : HEIGHT,
+      scale,
+    };
+  }
+
+  /** Cell and gap sizes giving a display `leds` wide about the room of a 32-LED one. */
+  _cells(cell, leds) {
+    const gap = cell > 8 ? 2 : 1;
+    if (leds <= WIDTH) return { cell, gap };
+    return { cell: Math.max(2, Math.floor(((cell + gap) * WIDTH) / leds) - 1), gap: 1 };
+  }
+
+  _isNG() {
+    return this._snapshot?.firmware === "awtrix_ng";
+  }
+
   _findItem(subentryId) {
     return (this._snapshot?.items || []).find((i) => i.subentry_id === subentryId);
   }
@@ -613,20 +655,24 @@ class AwtrixStudioPanel extends HTMLElement {
   _simulatedScreen() {
     const snapshot = this._snapshot;
     const current = this._items("app").find((a) => a.on_screen && a.pages.length);
-    const rendered = renderPage(current ? current.pages[current.page_index] || current.pages[0] : null);
-    addIndicators(rendered.pixels, this._indicatorPages());
-    return snapshot ? rendered : { pixels: new Array(WIDTH * HEIGHT).fill(null), icon: null };
+    const grid = this._appGrid();
+    const rendered = renderPage(current ? current.pages[current.page_index] || current.pages[0] : null, grid);
+    addIndicators(rendered.pixels, this._indicatorPages(), grid.width, grid.height);
+    return snapshot ? rendered : { pixels: new Array(grid.width * grid.height).fill(null), icon: null };
   }
 
   _drawMirror() {
     if (!this._mirrorCanvas) return;
     const fresh = this._screen.pixels && Date.now() - this._screen.at < MIRROR_STALE_MS;
     if (fresh) {
-      drawMatrix(this._mirrorCanvas, this._screen.pixels, { cell: 12, gap: 2, glow: true });
+      // A large screen (TC002, 52 × 16) gets smaller cells to fit.
+      drawMatrix(this._mirrorCanvas, this._screen.pixels, { ...this._cells(12, this._screen.width), glow: true,
+        width: this._screen.width, height: this._screen.height });
       this._mirrorCaption.textContent = this.t("live_mirror");
     } else {
       const rendered = this._simulatedScreen();
-      drawMatrix(this._mirrorCanvas, rendered.pixels, { cell: 12, gap: 2, icon: rendered.icon, glow: true });
+      const grid = this._appGrid();
+      drawMatrix(this._mirrorCanvas, rendered.pixels, { ...this._cells(12, grid.width * grid.scale), icon: rendered.icon, glow: true, ...grid });
       this._mirrorCaption.textContent = this._snapshot?.features?.screen ? this.t("live_waiting") : this.t("simulated_note");
     }
   }
@@ -960,7 +1006,7 @@ class AwtrixStudioPanel extends HTMLElement {
         color_2: toHex(d.color_2, "#FF6B5B"),
         color_mode: d.color_mode || (d.threshold_1 != null || d.threshold_2 != null ? "steps" : "fixed"),
         ...this._gradientForm(d),
-        template: d.template || STARTER_APP_TEMPLATE,
+        template: d.template || (this._isNG() ? NG_STARTER_APP_TEMPLATE : STARTER_APP_TEMPLATE),
         page_interval: d.page_interval ?? 1.5,
         cycle_only_on_screen: d.cycle_only_on_screen ?? true,
         hide_when_empty: d.hide_when_empty ?? true,
@@ -980,7 +1026,7 @@ class AwtrixStudioPanel extends HTMLElement {
       effect_interval: d.effect_interval ?? 1000,
       color_mode: d.color_mode || "state",
       ...this._gradientForm(d),
-      template: d.template || STARTER_INDICATOR_TEMPLATE,
+      template: d.template || (this._isNG() ? NG_STARTER_INDICATOR_TEMPLATE : STARTER_INDICATOR_TEMPLATE),
     };
   }
 
@@ -1392,7 +1438,8 @@ class AwtrixStudioPanel extends HTMLElement {
         this._displayGroup("timing", this._displayTiming()),
         this._displayGroup("text", this._displayText(render)),
         this._displayGroup("background", this._displayBackground(render)),
-        this._displayGroup("advanced", this._displayAdvanced()));
+        // AWTRIX NG has no `save`: only template apps keep something here.
+        this._isNG() && this._form.mode !== "template" ? null : this._displayGroup("advanced", this._displayAdvanced()));
     };
     render();
     return fieldset;
@@ -1452,7 +1499,8 @@ class AwtrixStudioPanel extends HTMLElement {
   _displayText(rerender) {
     const d = this._form.display;
     const styles = ["none", "rainbow", "gradient", "blink", "fade"].map((v) => [v, this.t(`text_style_${v}`)]);
-    const style = this._dField("style", this.t("text_style"), this._dSelect("style", styles, rerender), this.t("text_style_help"));
+    const style = this._dField("style", this.t("text_style"), this._dSelect("style", styles, rerender),
+      this.t(this._isNG() ? "text_style_help_ng" : "text_style_help"));
     // The server reports a style conflict on the key it refused.
     ["rainbow", "gradient", "blinkText", "fadeText"].forEach((key) => { this._errors[`display.${key}`] = this._errors["display.style"]; });
     let styleOptions = null;
@@ -1468,16 +1516,23 @@ class AwtrixStudioPanel extends HTMLElement {
       this._dField("textOffset", this.t("text_offset"), this._dInput("textOffset", "number", { min: -32, max: 32, step: 1, placeholder: "0" }),
         this.t("text_offset_help")),
       this._dCheck("center", this.t("center")),
-      this._dCheck("topText", this.t("top_text")),
+      this._isNG() ? null : this._dCheck("topText", this.t("top_text")),
       style, styleOptions || h("div"));
   }
 
   _displayBackground(rerender) {
     const d = this._form.display;
-    const palettes = h("datalist", { id: "awtrix-studio-palettes" }, ...PALETTES.map((name) => h("option", { value: name })));
+    // Names the clock announces (AWTRIX NG), else the documented ones.
+    const offered = this._snapshot?.capabilities || {};
+    const palettes = h("datalist", { id: "awtrix-studio-palettes" }, ...(offered.palettes?.length ? offered.palettes : PALETTES).map((name) => h("option", { value: name })));
+    const effects = offered.effects?.length ? offered.effects : EFFECTS;
+    const overlays = this._isNG() ? (offered.overlays?.length ? offered.overlays : OVERLAYS.filter((name) => name !== "clear")) : OVERLAYS;
+    const speed = this._isNG()
+      ? this._dInput("effect_speed", "number", { min: 0.1, max: 10, step: 0.1, placeholder: "1" })
+      : this._dInput("effect_speed", "number", { min: 1, max: 20, step: 1, placeholder: this.t("effect_default") });
     const effectFields = d.effect ? [
-      this._dField("speed", this.t("effect_speed"), this._dInput("effect_speed", "number", { min: 1, max: 20, step: 1, placeholder: this.t("effect_default") }),
-        this.t("effect_speed_help")),
+      this._dField("speed", this.t(this._isNG() ? "effect_speed_ng" : "effect_speed"), speed,
+        this.t(this._isNG() ? "effect_speed_help_ng" : "effect_speed_help")),
       this._dField("palette", this.t("effect_palette"),
         h("div", {}, this._dInput("effect_palette", "text", { list: "awtrix-studio-palettes", maxlength: 32, spellcheck: "false",
           placeholder: this.t("effect_default") }), palettes), this.t("effect_palette_help")),
@@ -1487,9 +1542,9 @@ class AwtrixStudioPanel extends HTMLElement {
     return h("div", { class: "fields" },
       this._dCheck("background_on", this.t("background_on"), null, rerender),
       d.background_on ? this._dField("background", this.t("background_color"), this._dInput("background", "color")) : h("div"),
-      this._dField("effect", this.t("effect_bg"), this._dSelect("effect", [["", this.t("none")], ...EFFECTS.map((name) => [name, name])], rerender),
+      this._dField("effect", this.t("effect_bg"), this._dSelect("effect", [["", this.t("none")], ...effects.map((name) => [name, name])], rerender),
         this.t("effect_bg_help")),
-      this._dField("overlay", this.t("overlay"), this._dSelect("overlay", [["", this.t("none")], ...OVERLAYS.map((name) => [name, this.t(`overlay_${name}`)])]),
+      this._dField("overlay", this.t("overlay"), this._dSelect("overlay", [["", this.t("none")], ...overlays.map((name) => [name, this.t(`overlay_${name}`) === `overlay_${name}` ? name : this.t(`overlay_${name}`)])]),
         this.t("overlay_help")),
       ...effectFields);
   }
@@ -1499,7 +1554,7 @@ class AwtrixStudioPanel extends HTMLElement {
     return h("div", { class: "fields" },
       template ? this._dField("lifetimeMode", this.t("lifetime_mode"),
         this._dSelect("lifetimeMode", [0, 1].map((n) => [String(n), this.t(`lifetime_mode_${n}`)])), this.t("lifetime_mode_help")) : null,
-      this._dCheck("save", this.t("save_on_clock"), this.t("save_on_clock_help")));
+      this._isNG() ? null : this._dCheck("save", this.t("save_on_clock"), this.t("save_on_clock_help")));
   }
 
   // ------------------------------------------------- color by value
@@ -1726,15 +1781,18 @@ class AwtrixStudioPanel extends HTMLElement {
 
     if (this._previewTab === "real") {
       const pixels = this._screen.pixels || new Array(WIDTH * HEIGHT).fill(null);
-      drawMatrix(this._previewCanvas, pixels, { cell: 11, gap: 2, glow: true });
+      const size = this._screen.pixels ? { width: this._screen.width, height: this._screen.height } : {};
+      drawMatrix(this._previewCanvas, pixels, { ...this._cells(11, size.width || WIDTH), glow: true, ...size });
       this._previewNote.textContent = this._screen.pixels ? this.t("live_mirror") : this.t("live_waiting");
     } else if (kind === "indicator") {
-      const pixels = addIndicators(new Array(WIDTH * HEIGHT).fill(null), page ? { [this._form.indicator]: page } : {});
-      drawMatrix(this._previewCanvas, pixels, { cell: 11, gap: 2, glow: true });
+      const grid = this._appGrid();
+      const pixels = addIndicators(new Array(grid.width * grid.height).fill(null), page ? { [this._form.indicator]: page } : {}, grid.width, grid.height);
+      drawMatrix(this._previewCanvas, pixels, { ...this._cells(11, grid.width * grid.scale), glow: true, ...grid });
       this._previewNote.textContent = this.t("simulated_note");
     } else {
-      const rendered = renderPage(page);
-      drawMatrix(this._previewCanvas, rendered.pixels, { cell: 11, gap: 2, icon: rendered.icon, glow: true });
+      const grid = this._appGrid();
+      const rendered = renderPage(page, grid);
+      drawMatrix(this._previewCanvas, rendered.pixels, { ...this._cells(11, grid.width * grid.scale), icon: rendered.icon, glow: true, ...grid });
       this._previewNote.textContent = [rendered.overflow ? this.t("overflow_note") : this.t("simulated_note"),
         rendered.effect ? this.t("effect_not_simulated", { name: rendered.effect }) : ""].filter(Boolean).join(" ");
     }
@@ -1749,7 +1807,9 @@ class AwtrixStudioPanel extends HTMLElement {
     } else {
       this._previewStatus.textContent = pages.length ? this.t("valid", { n: pages.length }) : this.t("valid_empty");
       this._previewStatus.className = "status ok";
-      this._previewDetail.textContent = "";
+      // The saved version may have been refused by the clock (AWTRIX NG says why).
+      const refused = this._view.subentryId ? this._findItem(this._view.subentryId)?.clock_error : null;
+      this._previewDetail.textContent = refused ? this.t("clock_refused_detail", { detail: refused }) : "";
     }
     this._json.textContent = page ? JSON.stringify(page, null, 2) : "—";
     this._generatedBox.hidden = !(this._form.mode === "simple" && this._preview.template);

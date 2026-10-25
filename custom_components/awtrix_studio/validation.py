@@ -33,6 +33,7 @@ from .const import (
     CONF_EFFECT,
     CONF_EFFECT_INTERVAL,
     CONF_ENTITY_ID,
+    CONF_FIRMWARE,
     CONF_GRADIENT,
     CONF_GRADIENT_MAX,
     CONF_GRADIENT_MIN,
@@ -258,10 +259,10 @@ def _app_colors(data: Mapping[str, Any]) -> dict[str, Any]:
     return clean
 
 
-def _display(data: Mapping[str, Any]) -> dict[str, Any]:
+def _display(data: Mapping[str, Any], firmware: str) -> dict[str, Any]:
     """The display options of an app (stored only when some are set)."""
     try:
-        display = normalize_display(data.get(CONF_DISPLAY))
+        display = normalize_display(data.get(CONF_DISPLAY), firmware)
     except InvalidDisplayError as err:
         raise Invalid(f"{CONF_DISPLAY}.{err.field}", err.key) from err
     return {CONF_DISPLAY: display} if display else {}
@@ -329,7 +330,7 @@ def normalize_app(
             clean[CONF_DECIMALS] = int(decimals)
         clean.update(_app_colors(data))
         clean.update(_progress(data))
-        clean.update(_display(data))
+        clean.update(_display(data, entry.data[CONF_FIRMWARE]))
         return clean
 
     return {
@@ -349,7 +350,7 @@ def normalize_app(
         CONF_LIFETIME: int(
             _number(data, CONF_LIFETIME, 0, MAX_LIFETIME) or DEFAULT_LIFETIME
         ),
-        **_display(data),
+        **_display(data, entry.data[CONF_FIRMWARE]),
     }
 
 

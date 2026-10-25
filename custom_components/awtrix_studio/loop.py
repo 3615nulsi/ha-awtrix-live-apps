@@ -66,14 +66,17 @@ def clean_order(order: Any) -> list[str]:
     return clean
 
 
-def desired_loop(current: Sequence[str], order: Sequence[str]) -> list[str]:
+def desired_loop(
+    current: Sequence[str], order: Sequence[str], *, keep_absent: bool = False
+) -> list[str]:
     """Return the loop rearranged to follow `order`.
 
-    Apps of the order that are not in the loop (hidden, removed) are skipped.
-    Apps in the loop that the order does not know keep their place after the
-    app they currently follow.
+    Apps of the order that are not in the loop (hidden, removed) are skipped,
+    or kept in their place with `keep_absent` (for a clock that reserves a
+    place for apps that come later). Apps in the loop that the order does not
+    know keep their place after the app they currently follow.
     """
-    present = set(current)
+    present = set(current) | (set(order) if keep_absent else set())
     result = [name for name in order if name in present]
     placed = set(result)
     for index, name in enumerate(current):

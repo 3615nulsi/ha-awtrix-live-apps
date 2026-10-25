@@ -48,6 +48,7 @@ from .const import (
     SUBENTRY_TYPE_INDICATOR,
 )
 from .display import CONF_DISPLAY, apply_display
+from .drivers import Screen
 from .icons import IconError, IconStore
 from .loop import MAX_APP_NAME, MAX_LOOP, clean_order
 from .manager import MANAGED_SUBENTRY_TYPES, ClockManager
@@ -142,6 +143,7 @@ def _snapshot(entry: ConfigEntry, manager: ClockManager | None) -> dict[str, Any
                 "pages": [_loads(p) for p in app.pages] if app else [],
                 "page_index": app.page_index if app else 0,
                 "error": app.last_error if app else None,
+                "clock_error": app.clock_error if app else None,
             }
         )
     driver = manager.driver if manager else None
@@ -154,21 +156,32 @@ def _snapshot(entry: ConfigEntry, manager: ClockManager | None) -> dict[str, Any
         "current_app": manager.current_app if manager else None,
         "order": clean_order(entry.options.get(CONF_APP_ORDER)),
         "loop": manager.loop if manager else None,
+        "capabilities": manager.capabilities if manager else None,
+        "display": (
+            {
+                "width": manager.display.width,
+                "height": manager.display.height,
+                "scale": manager.display.scale,
+            }
+            if manager
+            else {"width": 32, "height": 8, "scale": 1}
+        ),
         "features": {
             "screen": bool(driver and driver.screen_topic),
             "navigate": bool(driver and driver.navigate(True)),
-            "order": bool(driver and driver.reorder_path),
+            "order": bool(driver and driver.can_reorder),
         },
         "items": items,
     }
 
 
-def _build_template(kind: str, data: dict[str, Any]) -> str:
+def _build_template(entry: ConfigEntry, kind: str, data: dict[str, Any]) -> str:
     if data[CONF_MODE] != MODE_SIMPLE:
         return data[CONF_TEMPLATE]
+    firmware = entry.data[CONF_FIRMWARE]
     if kind == SUBENTRY_TYPE_INDICATOR:
-        return build_indicator_template(data)
-    return build_app_template(data)
+        return build_indicator_template(data, firmware)
+    return build_app_template(data, firmware)
 
 
 def _add_item(
@@ -307,9 +320,16 @@ async def ws_screen(
         return
 
     @callback
-    def forward(pixels: list[int]) -> None:
+    def forward(screen: Screen) -> None:
         connection.send_message(
-            websocket_api.event_message(msg["id"], {"pixels": pixels})
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "width": screen.width,
+                    "height": screen.height,
+                    "pixels": screen.pixels,
+                },
+            )
         )
 
     connection.subscriptions[msg["id"]] = await manager.async_subscribe_screen(forward)
@@ -346,7 +366,7 @@ def ws_preview(
     connection.send_result(msg["id"])
     try:
         data = normalize(hass, entry, kind, msg["data"], subentry_id, preview=True)
-        template_str = _build_template(kind, data)
+        template_str = _build_template(entry, kind, data)
         template = Template(template_str, hass)
         template.ensure_valid()
     except Invalid as err:
@@ -388,7 +408,9 @@ def ws_preview(
         if kind == SUBENTRY_TYPE_INDICATOR:
             pages = pages[:1]
         else:
-            pages = apply_display(pages, data.get(CONF_DISPLAY))
+            pages = apply_display(
+                pages, data.get(CONF_DISPLAY), entry.data[CONF_FIRMWARE]
+            )
         send({"pages": pages, "error": None, "template": generated})
 
     tracker = async_track_template_result(
@@ -521,8 +543,10 @@ async def ws_test(
         return
     try:
         data = normalize(hass, entry, kind, msg["data"], subentry_id)
-        pages = parse_pages(Template(_build_template(kind, data), hass).async_render())
-        pages = apply_display(pages, data.get(CONF_DISPLAY))
+        pages = parse_pages(
+            Template(_build_template(entry, kind, data), hass).async_render()
+        )
+        pages = apply_display(pages, data.get(CONF_DISPLAY), entry.data[CONF_FIRMWARE])
     except Invalid as err:
         connection.send_result(
             msg["id"], {"errors": {err.field: err.key}, "detail": err.detail}

@@ -1,11 +1,11 @@
 """Icons from the LaMetric gallery, served by Awtrix Studio.
 
 An app can name its icon `lametric:<id>`. Awtrix Studio downloads that icon
-once, keeps it in Home Assistant's storage and sends it inline with the app (as
-an 8x8 JPEG in Base64, which AWTRIX 3 accepts in the `icon` key). Nothing has
-to be uploaded to the clock first. Animated icons can only play from the
-clock's memory: they are stored there automatically (see clock_files), with
-their first image as a fallback.
+once, keeps it in Home Assistant's storage and sends it inline with the app
+(an 8x8 JPEG in Base64 for AWTRIX 3, a data URL for AWTRIX NG). Nothing has to
+be uploaded to the clock first. AWTRIX 3 can only play animated icons from its
+memory: they are stored there automatically (see clock_files), with their
+first image as a fallback. AWTRIX NG plays an animated GIF sent inline.
 
 Plain icon names and numbers keep their usual meaning: a file stored on the
 clock.
@@ -29,6 +29,7 @@ from PIL import Image
 
 from .clock_files import ClockFiles
 from .const import DOMAIN
+from .drivers import FirmwareDriver
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -205,12 +206,19 @@ class IconStore:
         # A full page means there may be more.
         return {"icons": icons, "more": len(icons) >= PAGE_SIZE}
 
-    async def async_resolve(self, payload: str, files: ClockFiles | None = None) -> str:
+    async def async_resolve(
+        self,
+        payload: str,
+        files: ClockFiles | None = None,
+        driver: FirmwareDriver | None = None,
+    ) -> str:
         """Replace a `lametric:<id>` icon in a page payload by the icon itself.
 
         Animated icons are stored on the clock (when `files` can) and named by
-        their number, so that the clock plays them; otherwise the first image
-        is sent inline.
+        their number, so that the clock plays them. Otherwise the icon is sent
+        inline, in the form the firmware takes: AWTRIX NG plays an inline GIF,
+        AWTRIX 3 shows the first image. An inline GIF that would make the
+        payload too large for the clock falls back to the first image.
         """
         if PREFIX not in payload:
             return payload
@@ -234,6 +242,19 @@ class IconStore:
             )
         ):
             page["icon"] = str(lametric_id)
-        else:
+        elif driver is None:
             page["icon"] = icon["jpeg"]
-        return json.dumps(page, ensure_ascii=False, separators=(",", ":"))
+        else:
+            page["icon"] = driver.inline_icon(icon["jpeg"], icon.get("gif"))
+            limit = driver.max_payload
+            if (
+                "gif" in icon
+                and limit is not None
+                and len(_dumps(page).encode()) > limit
+            ):
+                page["icon"] = driver.inline_icon(icon["jpeg"], None)
+        return _dumps(page)
+
+
+def _dumps(page: dict[str, Any]) -> str:
+    return json.dumps(page, ensure_ascii=False, separators=(",", ":"))

@@ -15,6 +15,7 @@ CONF_PREFIX: Final = "prefix"
 CONF_APP_ORDER: Final = "app_order"
 
 FIRMWARE_AWTRIX3: Final = "awtrix3"
+FIRMWARE_AWTRIX_NG: Final = "awtrix_ng"
 DEFAULT_PREFIX: Final = "awtrix"
 
 # Subentry types

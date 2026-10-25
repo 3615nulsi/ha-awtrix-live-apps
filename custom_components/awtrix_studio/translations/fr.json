@@ -5,7 +5,8 @@
       "mqtt_not_configured": "Configurez d'abord l'intégration MQTT : Awtrix Studio communique avec l'horloge via votre broker MQTT."
     },
     "error": {
-      "invalid_prefix": "Saisissez le préfixe MQTT de l'horloge, sans espace, `#` ni `+`."
+      "invalid_prefix": "Saisissez le préfixe MQTT de l'horloge, sans espace, `#` ni `+`.",
+      "not_detected": "L'horloge n'a pas répondu sur ce préfixe. Vérifiez le préfixe, ou choisissez le firmware vous-même."
     },
     "step": {
       "user": {
@@ -16,7 +17,7 @@
           "prefix": "Préfixe MQTT"
         },
         "data_description": {
-          "firmware": "Firmware installé sur l'horloge.",
+          "firmware": "Firmware installé sur l'horloge. **Détecter automatiquement** interroge l'horloge, qui doit être allumée et connectée à MQTT.",
           "prefix": "Le préfixe défini dans les réglages MQTT de l'horloge, par exemple `awtrix_1f1b94`."
         }
       }
@@ -215,7 +216,9 @@
   "selector": {
     "firmware": {
       "options": {
-        "awtrix3": "AWTRIX 3"
+        "auto": "Détecter automatiquement",
+        "awtrix3": "AWTRIX 3",
+        "awtrix_ng": "AWTRIX NG (aussi Ulanzi TC002)"
       }
     },
     "indicator": {

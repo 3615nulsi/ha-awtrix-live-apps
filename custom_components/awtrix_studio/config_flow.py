@@ -91,6 +91,7 @@ from .const import (
     EFFECT_NONE,
     EFFECTS,
     FIRMWARE_AWTRIX3,
+    FIRMWARE_AWTRIX_NG,
     GRADIENT_CUSTOM,
     INDICATOR_COLOR_MODES,
     INDICATORS,
@@ -102,6 +103,7 @@ from .const import (
     SUBENTRY_TYPE_APP,
     SUBENTRY_TYPE_INDICATOR,
 )
+from .detect import async_detect_firmware
 from .display import CONF_DISPLAY
 from .drivers import DRIVERS
 from .gradients import GRADIENTS, InvalidGradientError, resolve_stops, stops_to_data
@@ -114,6 +116,8 @@ from .templates import (
 )
 
 MQTT_DOMAIN = "mqtt"
+# Firmware choice that asks the clock which firmware it runs.
+FIRMWARE_AUTO = "auto"
 
 STARTER_APP_TEMPLATE = """{#- Render a JSON object (one page) or a list of objects
     (pages that alternate). Any key of the AWTRIX custom app API works. -#}
@@ -129,6 +133,35 @@ STARTER_INDICATOR_TEMPLATE = """{#- Render {"color": ...} to light the indicator
 {%- else -%}
 {}
 {%- endif -%}"""
+
+
+NG_STARTER_APP_TEMPLATE = """{#- Render a JSON object (one page) or a list of objects
+    (pages that alternate). Any key of the AWTRIX NG pushed app API works;
+    unknown keys make the clock refuse the app. -#}
+{{ [
+  {"text": now().strftime('%H:%M'), "textColor": "#FFFFFF"},
+  {"text": states('sun.sun'), "textColor": "#FFB74D"}
+] | tojson }}"""
+
+NG_STARTER_INDICATOR_TEMPLATE = """{#- Render {"color": ...} to light the indicator
+    (optionally with "blinkMs" or "fadeMs"), or {} to turn it off. -#}
+{%- if is_state('sun.sun', 'below_horizon') -%}
+{"color": "#FF8C00", "fadeMs": 2000}
+{%- else -%}
+{}
+{%- endif -%}"""
+
+# The starting template of each kind, in each firmware's own JSON.
+STARTER_TEMPLATES: dict[str, dict[str, str]] = {
+    FIRMWARE_AWTRIX3: {
+        SUBENTRY_TYPE_APP: STARTER_APP_TEMPLATE,
+        SUBENTRY_TYPE_INDICATOR: STARTER_INDICATOR_TEMPLATE,
+    },
+    FIRMWARE_AWTRIX_NG: {
+        SUBENTRY_TYPE_APP: NG_STARTER_APP_TEMPLATE,
+        SUBENTRY_TYPE_INDICATOR: NG_STARTER_INDICATOR_TEMPLATE,
+    },
+}
 
 
 def _normalize_prefix(prefix: str) -> str | None:
@@ -188,24 +221,27 @@ class AwtrixStudioConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             prefix = _normalize_prefix(user_input[CONF_PREFIX])
+            firmware = user_input[CONF_FIRMWARE]
             if prefix is None:
                 errors[CONF_PREFIX] = "invalid_prefix"
             else:
                 await self.async_set_unique_id(prefix)
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=prefix,
-                    data={
-                        CONF_FIRMWARE: user_input[CONF_FIRMWARE],
-                        CONF_PREFIX: prefix,
-                    },
-                )
+                if firmware == FIRMWARE_AUTO:
+                    firmware = await async_detect_firmware(self.hass, prefix)
+                if firmware is None:
+                    errors[CONF_FIRMWARE] = "not_detected"
+                else:
+                    return self.async_create_entry(
+                        title=prefix,
+                        data={CONF_FIRMWARE: firmware, CONF_PREFIX: prefix},
+                    )
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_FIRMWARE, default=FIRMWARE_AWTRIX3): SelectSelector(
+                vol.Required(CONF_FIRMWARE, default=FIRMWARE_AUTO): SelectSelector(
                     SelectSelectorConfig(
-                        options=list(DRIVERS),
+                        options=[FIRMWARE_AUTO, *DRIVERS],
                         translation_key=CONF_FIRMWARE,
                         mode=SelectSelectorMode.DROPDOWN,
                     )
@@ -278,6 +314,11 @@ class _LiveSubentryFlow(ConfigSubentryFlow):
         raise NotImplementedError
 
     # -- helpers -----------------------------------------------------------
+
+    def _starter_template(self) -> str:
+        firmware = self._get_entry().data[CONF_FIRMWARE]
+        starters = STARTER_TEMPLATES.get(firmware, STARTER_TEMPLATES[FIRMWARE_AWTRIX3])
+        return starters[self._subentry_type]
 
     def _siblings(self) -> list[dict[str, Any]]:
         """Data of the other subentries of the same type."""
@@ -355,7 +396,7 @@ class AppSubentryFlow(_LiveSubentryFlow):
     """Add or edit an app."""
 
     def _build_template(self, data: dict[str, Any]) -> str:
-        return build_app_template(data)
+        return build_app_template(data, self._get_entry().data[CONF_FIRMWARE])
 
     def _check_name(self, data: dict[str, Any], errors: dict[str, str]) -> None:
         if not self._is_new:
@@ -450,7 +491,7 @@ class AppSubentryFlow(_LiveSubentryFlow):
             if not errors:
                 return self._save(data[CONF_APP_NAME], data[CONF_APP_NAME], data)
         elif self._suggested is None:
-            self._suggested = {CONF_TEMPLATE: STARTER_APP_TEMPLATE}
+            self._suggested = {CONF_TEMPLATE: self._starter_template()}
 
         schema = vol.Schema(
             {
@@ -477,7 +518,7 @@ class IndicatorSubentryFlow(_LiveSubentryFlow):
     """Add or edit one of the clock's three colored indicators."""
 
     def _build_template(self, data: dict[str, Any]) -> str:
-        return build_indicator_template(data)
+        return build_indicator_template(data, self._get_entry().data[CONF_FIRMWARE])
 
     def _check_indicator(self, data: dict[str, Any], errors: dict[str, str]) -> None:
         if not self._is_new:
@@ -567,7 +608,7 @@ class IndicatorSubentryFlow(_LiveSubentryFlow):
             if not errors:
                 return self._save_indicator(data)
         elif self._suggested is None:
-            self._suggested = {CONF_TEMPLATE: STARTER_INDICATOR_TEMPLATE}
+            self._suggested = {CONF_TEMPLATE: self._starter_template()}
 
         schema = vol.Schema(
             {
