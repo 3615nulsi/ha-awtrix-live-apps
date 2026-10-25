@@ -50,7 +50,6 @@ from .const import (
 from .validation import Invalid, normalize
 
 FORMAT_KEY: Final = "awtrix_studio"
-LEGACY_FORMAT_KEYS: Final = ()
 FORMAT_VERSION: Final = 1
 MAX_ITEMS: Final = 64
 
@@ -132,12 +131,9 @@ class ImportItem:
 
 def parse_document(document: Any) -> list[Mapping[str, Any]]:
     """Return the raw items of an export, or raise InvalidDocumentError."""
-    if not isinstance(document, Mapping):
+    if not isinstance(document, Mapping) or FORMAT_KEY not in document:
         raise InvalidDocumentError("not_an_export")
-    key = next((k for k in (FORMAT_KEY, *LEGACY_FORMAT_KEYS) if k in document), None)
-    if key is None:
-        raise InvalidDocumentError("not_an_export")
-    version = document[key]
+    version = document[FORMAT_KEY]
     if not isinstance(version, int) or isinstance(version, bool):
         raise InvalidDocumentError("not_an_export")
     if version > FORMAT_VERSION:
