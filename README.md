@@ -4,6 +4,7 @@
 
 **Put anything from Home Assistant on your AWTRIX clock, and let it update itself.**
 No automations, no blueprints, no YAML.
+Works with **AWTRIX 3** and **AWTRIX NG**: Ulanzi TC001, Ulanzi TC002 and DIY clocks.
 
 [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=3615nulsi&repository=ha-awtrix-studio&category=integration)
 
@@ -27,9 +28,23 @@ No automations, no blueprints, no YAML.
 - **The three colored indicators** of the clock, driven the same way.
 - **A healthier Home Assistant.** Apps update only when their data changes and leave nothing in your history database. The usual "automation every few seconds" approach can write hundreds of thousands of entries a day.
 
+## ⏰ Supported clocks
+
+Awtrix Studio drives clocks running either firmware, and tells them apart by itself when you add a clock.
+
+| | AWTRIX 3 | AWTRIX NG |
+|---|---|---|
+| **Clocks** | Ulanzi TC001, DIY ESP32 clocks | Ulanzi TC002, and the TC001 or DIY ESP32 clocks flashed with NG |
+| **Screen** | 32 × 8 | 32 × 8; on the TC002, 52 × 16 with apps drawn at double size on a 26 × 8 grid |
+| **Simple apps, indicators, display options** | ✅ | ✅ written in NG's own JSON for you |
+| **Template mode** | AWTRIX 3 JSON | AWTRIX NG JSON; the keys the clock refuses are shown in the panel |
+| **Animated LaMetric icons** | stored on the clock through its web page | sent along with the app |
+| **Order of the apps** | set through the clock's web page, restored when an app comes back | stored by the clock itself |
+| **Not on this firmware** | – | text at the top, keeping an app after a restart |
+
 ## 🚀 Get started in 3 steps
 
-You need Home Assistant 2025.8 or newer, the [MQTT integration](https://www.home-assistant.io/integrations/mqtt/), and an [AWTRIX 3](https://blueforcer.github.io/awtrix3/) clock (such as the Ulanzi TC001) connected to the same MQTT broker.
+You need Home Assistant 2025.8 or newer, the [MQTT integration](https://www.home-assistant.io/integrations/mqtt/), and a clock running [AWTRIX 3](https://blueforcer.github.io/awtrix3/) or [AWTRIX NG](https://blueforcer.github.io/awtrix-ng/), connected to the same MQTT broker. On AWTRIX NG, MQTT stays off until you switch it on in the clock's web page (**System → MQTT**).
 
 1. **Install.** Click the **Open in HACS** button above, then **Download**, and restart Home Assistant.
    <details><summary>Without the button</summary>
@@ -37,7 +52,7 @@ You need Home Assistant 2025.8 or newer, the [MQTT integration](https://www.home
    In HACS, open the ⋮ menu → **Custom repositories**, add `https://github.com/3615nulsi/ha-awtrix-studio` as an **Integration**, then search for **Awtrix Studio** and download it. Or copy `custom_components/awtrix_studio` into your configuration folder by hand.
    </details>
 
-2. **Add your clock.** Go to **Settings → Devices & services → Add integration → Awtrix Studio**, and enter the clock's MQTT prefix (you'll find it in the clock's MQTT settings, for example `awtrix_1f1b94`).
+2. **Add your clock.** Go to **Settings → Devices & services → Add integration → Awtrix Studio**, and enter the clock's MQTT prefix (you'll find it in the clock's MQTT settings, for example `awtrix_1f1b94`). Leave the firmware on **Detect automatically**: Awtrix Studio asks the clock, which must be on and connected to MQTT.
 
 3. **Create your first app.** Open **Awtrix Studio** in the sidebar, click **Add app**, pick a sensor… and watch it appear on your clock. 🎉
 
@@ -77,13 +92,13 @@ Started in simple mode and want to go further? **Convert to template mode** open
 
 ### Display options
 
-Every app, in either mode, has a **Display** section for the rest of the AWTRIX app settings: how long it stays on screen, how many times a long text scrolls, scroll speed, what the icon does while the text scrolls, capitals, centering, text at the top, a rainbow or two-color gradient text, blinking or fading text, a background color, one of the clock's 19 background effects (with its speed, palette and blending), a weather overlay (snow, rain, storm…), and whether the clock keeps the app after it restarts. Leave a setting alone and the clock's own setting applies. In template mode they are defaults: a key your template sets itself wins.
+Every app, in either mode, has a **Display** section for the rest of the AWTRIX app settings: how long it stays on screen, how many times a long text scrolls, scroll speed, what the icon does while the text scrolls, capitals, centering, text at the top, a rainbow or two-color gradient text, blinking or fading text, a background color, one of the clock's 19 background effects (with its speed, palette and blending), a weather overlay (snow, rain, storm…), and whether the clock keeps the app after it restarts. Leave a setting alone and the clock's own setting applies. In template mode they are defaults: a key your template sets itself wins. On AWTRIX NG, the effects, overlays and palettes offered are the ones the clock announces, the effect speed is a multiplier (2 is twice as fast), and the rainbow or gradient text shares the app's single palette with the background effect.
 
 ### Order of the apps
 
 **Order** lists the whole loop of the clock, its built-in apps (time, date, temperature…) and apps pushed by anything else included. Drag the apps or use the arrows, then save. The clock follows this order from then on: when an app comes back after being hidden, it goes back to its place instead of the end of the loop.
 
-AWTRIX can only reorder apps through its web page, so this uses the address the clock reports over MQTT, like animated icons. If the web page cannot be reached (or is password protected), the order is kept and applied as soon as it can be.
+AWTRIX 3 can only reorder apps through its web page, so Awtrix Studio uses the address the clock reports over MQTT, like for animated icons. If the web page cannot be reached (or is password protected), the order is kept and applied as soon as it can be. AWTRIX NG stores the order itself: it is sent once, and the apps you switched off on the clock stay off.
 
 ### Indicators
 
@@ -93,9 +108,11 @@ The clock has three small colored lights on the right edge of its screen. Light 
 
 **Export** saves the apps and indicators you pick to a small JSON file, or copies it so you can paste it in a forum post. **Import** reads such a file on another clock (or another Home Assistant) and shows you exactly what will happen before anything changes: names already taken get a free name or can replace the existing app, entities that don't exist on this installation are listed, and templates can be read before you accept them.
 
-Simple apps describe *what* to show, not how a firmware draws it, so they also move between AWTRIX 3 and AWTRIX NG. Template apps contain AWTRIX 3 JSON and are flagged when imported on another firmware.
+Simple apps describe *what* to show, not how a firmware draws it, so they also move between AWTRIX 3 and AWTRIX NG. Template apps contain the JSON of their clock's firmware, and are flagged when imported on a clock running the other one.
 
 ## 📝 Template examples
+
+These examples are written for AWTRIX 3. On AWTRIX NG, a few keys change: `color` becomes `textColor`, `blinkText` becomes `textBlinkMs`, `"center": true` becomes `"textAlign": "center"`, `progressC` becomes `progressColor`, and a drawing is an array such as `["pixel", 20, 7, "#EF7D00"]` instead of `{"dp": [20, 7, "#EF7D00"]}`. Every change is listed in NG's guide [Coming from AWTRIX 3](https://github.com/Blueforcer/awtrix-ng/blob/main/docs/guides/migrating-from-awtrix3.md).
 
 <details>
 <summary><b>One page</b></summary>
@@ -170,7 +187,7 @@ Blue while exporting, green to red while importing. Simple mode gets close with 
 ```
 </details>
 
-Every key of the [AWTRIX custom app API](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) works: `text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`, and so on. Write `"icon": "lametric:2422"` to use an icon of the LaMetric gallery without uploading it to the clock.
+Every key of the clock's API works: the [AWTRIX 3 custom apps](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) (`text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`…) or the [AWTRIX NG pushed apps](https://github.com/Blueforcer/awtrix-ng/blob/main/docs/reference/payload.md) (`text`, `textColor`, `icon`, `draw`, `progress`, `textBlinkMs`, `effect`…). Write `"icon": "lametric:2422"` to use an icon of the LaMetric gallery without uploading it to the clock.
 
 ## ❓ FAQ
 
@@ -199,9 +216,14 @@ Yes. Awtrix Studio only touches the apps and indicators you create with it, so e
 </details>
 
 <details>
-<summary><b>Does it work with AWTRIX NG?</b></summary>
+<summary><b>How do I move a clock from AWTRIX 3 to AWTRIX NG?</b></summary>
 
-Yes, including the Ulanzi TC002, which runs AWTRIX NG. Pick **Detect automatically** when adding the clock. Simple apps, indicators and display options are written in NG's own JSON for you, the loop order is stored by the clock, and animated icons play. In template mode, write NG's JSON: the clock refuses unknown keys, and the panel shows what it refused. The preview draws NG drawings, and on a TC002 shows apps the way the clock does: at double size, on a 26 × 8 grid.
+1. **Export** its apps from the panel, before flashing NG.
+2. Flash AWTRIX NG and switch MQTT on in the clock's web page (**System → MQTT**), with a prefix.
+3. **Add the clock** again in Awtrix Studio, with **Detect automatically**. To keep the same prefix, remove the old clock first.
+4. **Import** the file. Simple apps move as they are. Template apps are flagged: rewrite them with NG's keys (see [Template examples](#-template-examples)); if the clock refuses one, the panel names the key.
+5. Icons named by a number were files on the clock, which flashing NG erased: name them `lametric:<number>` instead, and Awtrix Studio sends them along with the app.
+6. Once everything runs, remove the old clock if it is still there.
 </details>
 
 <details>
@@ -223,8 +245,9 @@ Apps are sent again automatically, as well as when MQTT reconnects.
 
 - Each app's template is tracked by Home Assistant's template engine: it re-renders only when an entity it uses changes.
 - Data changes are throttled to at most one message per second per app.
-- AWTRIX announces the app on screen on `<prefix>/stats/currentApp`; by default, pages only alternate while that's the app being shown.
-- The clock's uptime, read from `<prefix>/stats`, reveals a reboot; apps are then sent again.
+- The clock announces the app on screen (`<prefix>/stats/currentApp` on AWTRIX 3, `<prefix>/state/apps/active` on AWTRIX NG); by default, pages only alternate while that's the app being shown.
+- A reboot is spotted from the clock's uptime (`<prefix>/stats` on AWTRIX 3), or from the clock coming back `online` (`<prefix>/availability` on AWTRIX NG); apps are then sent again.
+- On AWTRIX NG, the clock answers every app it receives (`…/result`): a refusal is shown in the panel.
 - Messages go straight to the MQTT client: no service calls, no events.
 - Each app and indicator has a **switch** entity: turning it off removes the app from the clock (or turns the indicator off) and keeps its settings. Its state survives restarts.
 - The `awtrix_studio.refresh` action sends every enabled app and indicator again.
