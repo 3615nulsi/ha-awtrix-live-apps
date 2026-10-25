@@ -159,9 +159,10 @@ class IconStore:
     async def async_search(self, query: str, page: int) -> dict[str, Any]:
         """Search the LaMetric gallery. Only ids, names and a flag come back."""
         session = async_get_clientsession(self.hass)
+        # The gallery's pages start at 0; without a query, show popular icons.
         params = {
-            "page": str(page),
-            "category": "",
+            "page": str(page - 1),
+            "category": "" if query else "Popular",
             "search": query,
             "count": str(PAGE_SIZE),
         }
@@ -190,11 +191,8 @@ class IconStore:
                     "animated": item.get("type") == 1,
                 }
             )
-        total = payload.get("count_all") if isinstance(payload, dict) else None
-        return {
-            "icons": icons,
-            "more": isinstance(total, int) and total > page * PAGE_SIZE,
-        }
+        # A full page means there may be more.
+        return {"icons": icons, "more": len(icons) >= PAGE_SIZE}
 
     async def async_resolve(self, payload: str) -> str:
         """Replace a `lametric:<id>` icon in a page payload by the icon itself."""

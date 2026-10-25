@@ -127,7 +127,11 @@ async def test_search_keeps_only_safe_fields(
     )
     store = IconStore(hass)
     result = await store.async_search("sun", 1)
-    assert result["more"] is True
+    # The gallery counts pages from 0.
+    url = aioclient_mock.mock_calls[-1][1]
+    assert url.query["page"] == "0"
+    assert url.query["search"] == "sun"
+    assert result["more"] is False
     assert result["icons"][0] == {"id": 2422, "name": "Sun", "animated": False}
     assert result["icons"][1]["id"] == 653
     assert result["icons"][1]["animated"] is True

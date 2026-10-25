@@ -33,8 +33,11 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         return
 
     integration = await async_get_integration(hass, DOMAIN)
+    # The version is part of the path, so that every module of the panel (not
+    # only the entry point) is reloaded after an update.
+    static_url = f"{STATIC_URL}/{integration.version}"
     await hass.http.async_register_static_paths(
-        [StaticPathConfig(STATIC_URL, str(FRONTEND_DIR), cache_headers=False)]
+        [StaticPathConfig(static_url, str(FRONTEND_DIR), cache_headers=False)]
     )
     await panel_custom.async_register_panel(
         hass,
@@ -42,7 +45,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         webcomponent_name=WEBCOMPONENT,
         sidebar_title="Awtrix Studio",
         sidebar_icon="mdi:dots-grid",
-        module_url=f"{STATIC_URL}/{WEBCOMPONENT}.js?v={integration.version}",
+        module_url=f"{static_url}/{WEBCOMPONENT}.js",
         require_admin=True,
         config={},
     )
