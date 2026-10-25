@@ -30,6 +30,17 @@ TIMEOUT: Final = aiohttp.ClientTimeout(total=5)
 RETRY_AFTER: Final = 300
 
 
+def upload_form(path: str, data: bytes) -> aiohttp.FormData:
+    """The multipart form of the clock's file manager.
+
+    The file name is the destination path and must reach the clock as is:
+    aiohttp would otherwise percent-encode its slashes.
+    """
+    form = aiohttp.FormData(quote_fields=False)
+    form.add_field("data", data, filename=path, content_type="application/octet-stream")
+    return form
+
+
 class ClockFiles:
     """Icon files of one clock."""
 
@@ -105,13 +116,7 @@ class ClockFiles:
         }
 
     async def _async_upload(self, filename: str, data: bytes) -> None:
-        form = aiohttp.FormData()
-        form.add_field(
-            "data",
-            data,
-            filename=self.driver.icon_file(filename),
-            content_type="application/octet-stream",
-        )
+        form = upload_form(self.driver.icon_file(filename), data)
         session = async_get_clientsession(self.hass)
         async with session.post(
             self._url("/edit"), data=form, timeout=TIMEOUT

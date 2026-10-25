@@ -22,7 +22,7 @@ from pytest_homeassistant_custom_component.typing import (
     WebSocketGenerator,
 )
 
-from custom_components.awtrix_studio.clock_files import ClockFiles
+from custom_components.awtrix_studio.clock_files import ClockFiles, upload_form
 from custom_components.awtrix_studio.const import DATA_ICONS, DOMAIN
 from custom_components.awtrix_studio.drivers import Awtrix3Driver
 from custom_components.awtrix_studio.icons import (
@@ -337,3 +337,10 @@ async def test_unreachable_clock_falls_back_to_first_image(
     files.set_address("192.168.1.50")
     page = json.loads(await store.async_resolve('{"icon":"lametric:7"}', files))
     assert page["icon"] == convert(gif)["jpeg"]
+
+
+def test_upload_form_keeps_the_path() -> None:
+    """The destination path reaches the clock unencoded."""
+    writer = upload_form("/ICONS/58478.gif", b"GIF89a")()
+    headers = [part.headers["Content-Disposition"] for part, _, _ in writer]
+    assert headers == ['form-data; name="data"; filename="/ICONS/58478.gif"']
