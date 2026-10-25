@@ -396,7 +396,7 @@ class AppSubentryFlow(_LiveSubentryFlow):
     """Add or edit an app."""
 
     def _build_template(self, data: dict[str, Any]) -> str:
-        return build_app_template(data)
+        return build_app_template(data, self._get_entry().data[CONF_FIRMWARE])
 
     def _check_name(self, data: dict[str, Any], errors: dict[str, str]) -> None:
         if not self._is_new:
@@ -518,7 +518,7 @@ class IndicatorSubentryFlow(_LiveSubentryFlow):
     """Add or edit one of the clock's three colored indicators."""
 
     def _build_template(self, data: dict[str, Any]) -> str:
-        return build_indicator_template(data)
+        return build_indicator_template(data, self._get_entry().data[CONF_FIRMWARE])
 
     def _check_indicator(self, data: dict[str, Any], errors: dict[str, str]) -> None:
         if not self._is_new:

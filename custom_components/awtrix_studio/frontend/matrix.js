@@ -91,11 +91,29 @@ function mixColors(from, to, ratio) {
   return parseColor([channel(16), channel(8), channel(0)]);
 }
 
+/** Read an AWTRIX NG page with the AWTRIX 3 names the simulator draws. */
+function fromNG(page) {
+  const ng = ["textColor", "backgroundColor", "progressColor", "progressTrackColor", "textOffsetX", "textAlign"];
+  if (!ng.some((key) => key in page)) return page;
+  const out = { ...page };
+  if (page.textColor === "palette") {
+    if (page.palette === "Rainbow") out.rainbow = true;
+    else if (Array.isArray(page.palette) && page.palette.length >= 2) out.gradient = [page.palette[0], page.palette[page.palette.length - 1]];
+  } else if (page.textColor !== undefined) out.color = page.textColor;
+  if (page.backgroundColor !== undefined) out.background = page.backgroundColor;
+  if (page.progressColor !== undefined) out.progressC = page.progressColor;
+  if (page.progressTrackColor !== undefined) out.progressBC = page.progressTrackColor;
+  if (Number.isFinite(page.textOffsetX)) out.textOffset = page.textOffsetX;
+  if (page.textAlign === "start") out.center = false;
+  return out;
+}
+
 /** Render one AWTRIX page into pixels. Returns {pixels, icon, overflow, effect}. */
 export function renderPage(page) {
   const pixels = new Array(WIDTH * HEIGHT).fill(OFF);
   const result = { pixels, icon: null, overflow: false, effect: null };
   if (!page || typeof page !== "object" || Array.isArray(page)) return result;
+  page = fromNG(page);
 
   const set = (x, y, color) => {
     x = Math.round(x);
@@ -121,7 +139,7 @@ export function renderPage(page) {
   // Text: a string, or segments [{t, c}].
   const base = parseColor(page.color, "#FFFFFF");
   const segments = Array.isArray(page.text)
-    ? page.text.filter((s) => s && typeof s === "object").map((s) => ({ t: String(s.t ?? ""), c: parseColor(s.c, base) }))
+    ? page.text.filter((s) => s && typeof s === "object").map((s) => ({ t: String(s.t ?? s.text ?? ""), c: parseColor(s.c ?? s.color, base) }))
     : page.text !== undefined && page.text !== null
       ? [{ t: String(page.text), c: base }]
       : [];

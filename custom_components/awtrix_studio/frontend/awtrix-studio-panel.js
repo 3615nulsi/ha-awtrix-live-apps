@@ -580,12 +580,13 @@ class AwtrixStudioPanel extends HTMLElement {
     let text, kind = "";
     if (!item.enabled) text = this.t("disabled");
     else if (item.error) { text = this.t("failing"); kind = "error"; }
+    else if (item.clock_error) { text = this.t("clock_refused"); kind = "error"; }
     else if (!item.pages.length) text = this.t("hidden");
     else if (item.on_screen) { text = `${this.t("on_screen")}${item.pages.length > 1 ? " · " + this.t("pages_n", { n: item.pages.length }) : ""}`; kind = "screen-on"; }
     else { text = `${this.t("visible")}${item.pages.length > 1 ? " · " + this.t("pages_n", { n: item.pages.length }) : ""}`; kind = "ok"; }
     card.status.textContent = text;
     card.status.className = `status ${kind}`;
-    if (item.error) card.status.title = item.error; else card.status.removeAttribute("title");
+    if (item.error || item.clock_error) card.status.title = item.error || item.clock_error; else card.status.removeAttribute("title");
   }
 
   _buildIndicators() {
@@ -1416,7 +1417,8 @@ class AwtrixStudioPanel extends HTMLElement {
         this._displayGroup("timing", this._displayTiming()),
         this._displayGroup("text", this._displayText(render)),
         this._displayGroup("background", this._displayBackground(render)),
-        this._displayGroup("advanced", this._displayAdvanced()));
+        // AWTRIX NG has no `save`: only template apps keep something here.
+        this._isNG() && this._form.mode !== "template" ? null : this._displayGroup("advanced", this._displayAdvanced()));
     };
     render();
     return fieldset;
@@ -1476,7 +1478,8 @@ class AwtrixStudioPanel extends HTMLElement {
   _displayText(rerender) {
     const d = this._form.display;
     const styles = ["none", "rainbow", "gradient", "blink", "fade"].map((v) => [v, this.t(`text_style_${v}`)]);
-    const style = this._dField("style", this.t("text_style"), this._dSelect("style", styles, rerender), this.t("text_style_help"));
+    const style = this._dField("style", this.t("text_style"), this._dSelect("style", styles, rerender),
+      this.t(this._isNG() ? "text_style_help_ng" : "text_style_help"));
     // The server reports a style conflict on the key it refused.
     ["rainbow", "gradient", "blinkText", "fadeText"].forEach((key) => { this._errors[`display.${key}`] = this._errors["display.style"]; });
     let styleOptions = null;
@@ -1492,16 +1495,23 @@ class AwtrixStudioPanel extends HTMLElement {
       this._dField("textOffset", this.t("text_offset"), this._dInput("textOffset", "number", { min: -32, max: 32, step: 1, placeholder: "0" }),
         this.t("text_offset_help")),
       this._dCheck("center", this.t("center")),
-      this._dCheck("topText", this.t("top_text")),
+      this._isNG() ? null : this._dCheck("topText", this.t("top_text")),
       style, styleOptions || h("div"));
   }
 
   _displayBackground(rerender) {
     const d = this._form.display;
-    const palettes = h("datalist", { id: "awtrix-studio-palettes" }, ...PALETTES.map((name) => h("option", { value: name })));
+    // Names the clock announces (AWTRIX NG), else the documented ones.
+    const offered = this._snapshot?.capabilities || {};
+    const palettes = h("datalist", { id: "awtrix-studio-palettes" }, ...(offered.palettes?.length ? offered.palettes : PALETTES).map((name) => h("option", { value: name })));
+    const effects = offered.effects?.length ? offered.effects : EFFECTS;
+    const overlays = this._isNG() ? (offered.overlays?.length ? offered.overlays : OVERLAYS.filter((name) => name !== "clear")) : OVERLAYS;
+    const speed = this._isNG()
+      ? this._dInput("effect_speed", "number", { min: 0.1, max: 10, step: 0.1, placeholder: "1" })
+      : this._dInput("effect_speed", "number", { min: 1, max: 20, step: 1, placeholder: this.t("effect_default") });
     const effectFields = d.effect ? [
-      this._dField("speed", this.t("effect_speed"), this._dInput("effect_speed", "number", { min: 1, max: 20, step: 1, placeholder: this.t("effect_default") }),
-        this.t("effect_speed_help")),
+      this._dField("speed", this.t(this._isNG() ? "effect_speed_ng" : "effect_speed"), speed,
+        this.t(this._isNG() ? "effect_speed_help_ng" : "effect_speed_help")),
       this._dField("palette", this.t("effect_palette"),
         h("div", {}, this._dInput("effect_palette", "text", { list: "awtrix-studio-palettes", maxlength: 32, spellcheck: "false",
           placeholder: this.t("effect_default") }), palettes), this.t("effect_palette_help")),
@@ -1511,9 +1521,9 @@ class AwtrixStudioPanel extends HTMLElement {
     return h("div", { class: "fields" },
       this._dCheck("background_on", this.t("background_on"), null, rerender),
       d.background_on ? this._dField("background", this.t("background_color"), this._dInput("background", "color")) : h("div"),
-      this._dField("effect", this.t("effect_bg"), this._dSelect("effect", [["", this.t("none")], ...EFFECTS.map((name) => [name, name])], rerender),
+      this._dField("effect", this.t("effect_bg"), this._dSelect("effect", [["", this.t("none")], ...effects.map((name) => [name, name])], rerender),
         this.t("effect_bg_help")),
-      this._dField("overlay", this.t("overlay"), this._dSelect("overlay", [["", this.t("none")], ...OVERLAYS.map((name) => [name, this.t(`overlay_${name}`)])]),
+      this._dField("overlay", this.t("overlay"), this._dSelect("overlay", [["", this.t("none")], ...overlays.map((name) => [name, this.t(`overlay_${name}`) === `overlay_${name}` ? name : this.t(`overlay_${name}`)])]),
         this.t("overlay_help")),
       ...effectFields);
   }
@@ -1523,7 +1533,7 @@ class AwtrixStudioPanel extends HTMLElement {
     return h("div", { class: "fields" },
       template ? this._dField("lifetimeMode", this.t("lifetime_mode"),
         this._dSelect("lifetimeMode", [0, 1].map((n) => [String(n), this.t(`lifetime_mode_${n}`)])), this.t("lifetime_mode_help")) : null,
-      this._dCheck("save", this.t("save_on_clock"), this.t("save_on_clock_help")));
+      this._isNG() ? null : this._dCheck("save", this.t("save_on_clock"), this.t("save_on_clock_help")));
   }
 
   // ------------------------------------------------- color by value
@@ -1775,7 +1785,9 @@ class AwtrixStudioPanel extends HTMLElement {
     } else {
       this._previewStatus.textContent = pages.length ? this.t("valid", { n: pages.length }) : this.t("valid_empty");
       this._previewStatus.className = "status ok";
-      this._previewDetail.textContent = "";
+      // The saved version may have been refused by the clock (AWTRIX NG says why).
+      const refused = this._view.subentryId ? this._findItem(this._view.subentryId)?.clock_error : null;
+      this._previewDetail.textContent = refused ? this.t("clock_refused_detail", { detail: refused }) : "";
     }
     this._json.textContent = page ? JSON.stringify(page, null, 2) : "—";
     this._generatedBox.hidden = !(this._form.mode === "simple" && this._preview.template);

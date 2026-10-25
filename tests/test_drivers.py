@@ -165,3 +165,50 @@ def test_inline_icons() -> None:
     ng = AwtrixNGDriver("a")
     assert ng.inline_icon("JPEG", None) == "data:image/jpeg;base64,JPEG"
     assert ng.inline_icon("JPEG", "GIF") == "data:image/gif;base64,GIF"
+
+
+def test_ng_capabilities_and_results() -> None:
+    """The clock's names are kept when valid; refusals say what is wrong."""
+    driver = AwtrixNGDriver("awtrixNG")
+    capabilities = driver.parse_capabilities(
+        json.dumps(
+            {
+                "effects": ["Plasma", "<b>", 3],
+                "overlays": ["snow"],
+                "palettes": ["Lava"],
+                "transitions": ["Slide"],
+            }
+        )
+    )
+    assert capabilities == {
+        "effects": ["Plasma"],
+        "overlays": ["snow"],
+        "palettes": ["Lava"],
+    }
+    assert driver.parse_capabilities("[]") is None
+
+    topic = "awtrixNG/cmd/apps/pushed/tram/result"
+    assert driver.parse_result(topic, '{"ok":true}') == (
+        "awtrixNG/cmd/apps/pushed/tram",
+        None,
+    )
+    refused = json.dumps(
+        {
+            "ok": False,
+            "error": {
+                "code": "validationFailed",
+                "message": "unknown key",
+                "field": "color",
+            },
+        }
+    )
+    assert driver.parse_result(topic, refused) == (
+        "awtrixNG/cmd/apps/pushed/tram",
+        "color: unknown key",
+    )
+    assert driver.parse_result(topic, '{"ok":false}') == (
+        "awtrixNG/cmd/apps/pushed/tram",
+        "refused",
+    )
+    assert driver.parse_result(topic, "nope") is None
+    assert driver.parse_result("awtrixNG/cmd/apps/pushed/tram", "{}") is None

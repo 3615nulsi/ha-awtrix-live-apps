@@ -81,6 +81,7 @@ class LiveApp:
         self._page_index = 0
         self._last_payload: str | None = None
         self._last_error: str | None = None
+        self._clock_error: str | None = None
 
         self._listeners: list[Callable[[], None]] = []
 
@@ -136,6 +137,18 @@ class LiveApp:
     def last_error(self) -> str | None:
         """Return the last template error, if the template is failing."""
         return self._last_error
+
+    @property
+    def clock_error(self) -> str | None:
+        """Return why the clock refused the last payload, if it did."""
+        return self._clock_error
+
+    @callback
+    def async_set_clock_error(self, error: str | None) -> None:
+        """Record the clock's answer to the last payload."""
+        if error != self._clock_error:
+            self._clock_error = error
+            self._notify()
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:
@@ -258,7 +271,7 @@ class LiveApp:
 
         if self.config.single_page:
             pages = pages[:1]
-        pages = apply_display(pages, self.config.display)
+        pages = apply_display(pages, self.config.display, self.driver.firmware)
         if self.config.lifetime > 0:
             pages = [self.driver.with_lifetime(p, self.config.lifetime) for p in pages]
         self._pages = [serialize_page(p) for p in pages]

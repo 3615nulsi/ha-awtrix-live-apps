@@ -249,3 +249,73 @@ async def test_flow_detects_the_firmware(
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {"firmware": "awtrix_ng", "prefix": PREFIX}
+
+
+async def test_simple_app_speaks_ng(
+    hass: HomeAssistant,
+    hass_ws_client: WebSocketGenerator,
+    mqtt_mock: MqttMockHAClient,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A simple app with display options reaches an NG clock in NG keys."""
+    hass.states.async_set("sensor.temp", "21.5", {"unit_of_measurement": "°C"})
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=PREFIX,
+        unique_id=PREFIX,
+        data={"firmware": "awtrix_ng", "prefix": PREFIX},
+        subentries_data=[
+            ConfigSubentryDataWithId(
+                data={
+                    "mode": "simple",
+                    "app_name": "temp",
+                    "entity_id": "sensor.temp",
+                    "color": [0, 170, 255],
+                    "display": {"duration": 10, "rainbow": True, "overlay": "snow"},
+                },
+                subentry_id="app_temp",
+                subentry_type="app",
+                title="temp",
+                unique_id="temp",
+            )
+        ],
+    )
+    await setup(hass, entry)
+    topic = f"{PREFIX}/cmd/apps/pushed/temp"
+    assert json.loads(published(mqtt_mock, topic)[-1]) == {
+        "durationMs": 10000,
+        "palette": "Rainbow",
+        "overlay": "snow",
+        "text": "21.5°C",
+        "textColor": "palette",
+    }
+
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {"type": "awtrix_studio/subscribe", "entry_id": entry.entry_id}
+    )
+    assert (await client.receive_json())["success"]
+    await tick(hass, freezer, 0.2)
+    await client.receive_json()
+
+    async_fire_mqtt_message(
+        hass,
+        f"{PREFIX}/state/capabilities",
+        json.dumps({"effects": ["Plasma"], "overlays": ["snow"], "palettes": ["Lava"]}),
+    )
+    async_fire_mqtt_message(
+        hass,
+        f"{topic}/result",
+        json.dumps(
+            {"ok": False, "error": {"field": "palette", "message": "out of range"}}
+        ),
+    )
+    await tick(hass, freezer, 0.2)
+    snapshot = (await client.receive_json())["event"]
+    assert snapshot["capabilities"]["effects"] == ["Plasma"]
+    [item] = snapshot["items"]
+    assert item["clock_error"] == "palette: out of range"
+
+    async_fire_mqtt_message(hass, f"{topic}/result", '{"ok":true}')
+    await tick(hass, freezer, 0.2)
+    assert (await client.receive_json())["event"]["items"][0]["clock_error"] is None

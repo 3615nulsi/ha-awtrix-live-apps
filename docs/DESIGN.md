@@ -88,8 +88,15 @@ Confirmé dans la documentation NG (v1.2) et mis en œuvre dans le pilote NG :
 | Icône inline | JPEG en Base64, première image seulement | data URL ; un GIF animé est joué (message limité à 8 Ko) |
 
 Les dessins existent sur NG, sous forme de tableaux (`["pixel", x, y, c]`).
-Le contenu (mode simple, options d'affichage, aperçu) reste au format AWTRIX 3
-pour l'instant : sa traduction en clés NG est l'étape suivante.
+
+Contenu : les modèles générés en mode simple sont écrits dans le JSON du
+firmware de l'horloge (`textColor`, `progressColor`, `blinkMs`…). Les options
+d'affichage restent stockées avec les noms AWTRIX 3, validées pour le firmware
+de l'horloge (pas de `topText` ni de `save` sur NG, vitesse d'effet en
+multiplicateur), et traduites en clés NG à la publication. Sur NG, une app n'a
+qu'une palette : celle du style de texte (arc-en-ciel, dégradé) l'emporte sur
+celle de l'effet. Les refus de l'horloge (`…/result`) sont affichés dans le
+panneau, et les effets, météos et palettes sont lus sur `state/capabilities`.
 
 ## 5. Configuration (interface uniquement)
 

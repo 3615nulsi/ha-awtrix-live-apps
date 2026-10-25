@@ -210,3 +210,33 @@ def test_numbers_are_clamped() -> None:
         {"entity_id": "sensor.x", "effect": "evil", "effect_interval": 10**9}
     )
     assert "evil" not in indicator
+
+
+async def test_ng_templates_use_ng_keys(hass: HomeAssistant) -> None:
+    """Simple items describe what to show; NG clocks get NG keys."""
+    hass.states.async_set("sensor.battery", "40", {"unit_of_measurement": "%"})
+    template = build_app_template(
+        {
+            "entity_id": "sensor.battery",
+            "color": [255, 255, 255],
+            "progress": True,
+            "progress_bg": [0, 0, 0],
+        },
+        "awtrix_ng",
+    )
+    assert render(hass, template) == [
+        {
+            "text": "40%",
+            "textColor": "#FFFFFF",
+            "progress": 40,
+            "progressColor": "#FFFFFF",
+            "progressTrackColor": "#000000",
+        }
+    ]
+
+    hass.states.async_set("binary_sensor.door", "on")
+    template = build_indicator_template(
+        {"entity_id": "binary_sensor.door", "effect": "blink", "effect_interval": 500},
+        "awtrix_ng",
+    )
+    assert render(hass, template) == [{"color": "#FF8C00", "blinkMs": 500}]

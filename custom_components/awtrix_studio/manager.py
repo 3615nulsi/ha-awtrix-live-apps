@@ -61,15 +61,15 @@ ORDER_CHECK_INTERVAL = timedelta(seconds=60)
 _LOGGER = logging.getLogger(__name__)
 
 
-def subentry_template(subentry: ConfigSubentry) -> str:
+def subentry_template(subentry: ConfigSubentry, firmware: str) -> str:
     """Return the template of an app or indicator, generating it in simple mode."""
     data = subentry.data
     if data.get(CONF_MODE) != MODE_SIMPLE:
         return data[CONF_TEMPLATE]
     try:
         if subentry.subentry_type == SUBENTRY_TYPE_INDICATOR:
-            return build_indicator_template(data)
-        return build_app_template(data)
+            return build_indicator_template(data, firmware)
+        return build_app_template(data, firmware)
     except InvalidSimpleOptionsError as err:
         _LOGGER.error("Cannot build %s: %s", subentry.title, err)
         return "{}"
@@ -82,13 +82,13 @@ def subentry_topic(driver: FirmwareDriver, subentry: ConfigSubentry) -> str:
     return driver.app_topic(subentry.data[CONF_APP_NAME])
 
 
-def app_config_from_subentry(subentry: ConfigSubentry) -> AppConfig:
+def app_config_from_subentry(subentry: ConfigSubentry, firmware: str) -> AppConfig:
     """Build the engine configuration of an app or indicator."""
     data = subentry.data
     if subentry.subentry_type == SUBENTRY_TYPE_INDICATOR:
         return AppConfig(
             name=f"indicator{data[CONF_INDICATOR]}",
-            template=subentry_template(subentry),
+            template=subentry_template(subentry, firmware),
             page_interval=DEFAULT_PAGE_INTERVAL,
             cycle_only_on_screen=True,
             hide_when_empty=True,
@@ -98,7 +98,7 @@ def app_config_from_subentry(subentry: ConfigSubentry) -> AppConfig:
     simple = data.get(CONF_MODE) == MODE_SIMPLE
     return AppConfig(
         name=data[CONF_APP_NAME],
-        template=subentry_template(subentry),
+        template=subentry_template(subentry, firmware),
         page_interval=float(data.get(CONF_PAGE_INTERVAL, DEFAULT_PAGE_INTERVAL)),
         cycle_only_on_screen=bool(
             data.get(CONF_CYCLE_ONLY_ON_SCREEN, DEFAULT_CYCLE_ONLY_ON_SCREEN)
@@ -140,6 +140,9 @@ class ClockManager:
         self._order_lock = asyncio.Lock()
         self._order_pending = False
         self._online: bool | None = None
+        self._capabilities: dict[str, list[str]] | None = None
+        # The live app or indicator publishing on each topic.
+        self._by_topic: dict[str, LiveApp] = {}
 
     @property
     def current_app(self) -> str | None:
@@ -169,6 +172,11 @@ class ClockManager:
         return self.driver.prefix
 
     @property
+    def capabilities(self) -> dict[str, list[str]] | None:
+        """Return the effects, overlays and palettes the clock offers, if known."""
+        return self._capabilities
+
+    @property
     def order(self) -> list[str]:
         """Return the app loop order chosen by the user (may be empty)."""
         return list(self._order)
@@ -193,7 +201,7 @@ class ClockManager:
         app = LiveApp(
             self.hass,
             self.driver,
-            app_config_from_subentry(subentry),
+            app_config_from_subentry(subentry, self.driver.firmware),
             self._publish,
             topic=subentry_topic(self.driver, subentry),
         )
@@ -204,8 +212,10 @@ class ClockManager:
             subentry.subentry_type,
             dict(subentry.data),
         )
+        topic = subentry_topic(self.driver, subentry)
+        self._by_topic[topic] = app
         if subentry.subentry_type == SUBENTRY_TYPE_APP:
-            self._app_topics.add(subentry_topic(self.driver, subentry))
+            self._app_topics.add(topic)
         return app
 
     async def async_start(self) -> None:
@@ -221,6 +231,14 @@ class ClockManager:
         if topic := self.driver.online_topic:
             self._unsubscribers.append(
                 await mqtt.async_subscribe(self.hass, topic, self._on_online)
+            )
+        if topic := self.driver.capabilities_topic:
+            self._unsubscribers.append(
+                await mqtt.async_subscribe(self.hass, topic, self._on_capabilities)
+            )
+        for topic in self.driver.result_topics:
+            self._unsubscribers.append(
+                await mqtt.async_subscribe(self.hass, topic, self._on_result)
             )
         self._unsubscribers.append(
             mqtt.async_subscribe_connection_status(self.hass, self._on_connection)
@@ -481,6 +499,28 @@ class ClockManager:
             self.hass.async_create_task(
                 self.async_republish_all(), f"awtrix_studio republish {self.prefix}"
             )
+
+    @callback
+    def _on_capabilities(self, msg: mqtt.ReceiveMessage) -> None:
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            payload = payload.decode(errors="replace")
+        capabilities = self.driver.parse_capabilities(str(payload))
+        if capabilities is not None and capabilities != self._capabilities:
+            self._capabilities = capabilities
+            self._notify()
+
+    @callback
+    def _on_result(self, msg: mqtt.ReceiveMessage) -> None:
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            payload = payload.decode(errors="replace")
+        result = self.driver.parse_result(msg.topic, str(payload))
+        if result is None or (app := self._by_topic.get(result[0])) is None:
+            return
+        if result[1] is not None and result[1] != app.clock_error:
+            _LOGGER.warning("The clock refused app '%s': %s", app.name, result[1])
+        app.async_set_clock_error(result[1])
 
     @callback
     def _on_online(self, msg: mqtt.ReceiveMessage) -> None:

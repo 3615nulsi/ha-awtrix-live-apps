@@ -4,18 +4,23 @@ Apps in both modes can carry display options (how long the app stays, an
 effect behind the text, scrolling, text style…). They are applied to every
 page as defaults: a key the template sets itself always wins.
 
-Each option is an AWTRIX 3 key, checked and bounded here; only options that
-differ from the firmware's default are stored.
+Options are stored with the names of AWTRIX 3 keys, checked and bounded
+here for the clock's firmware; only options that differ from the firmware's
+default are stored. For AWTRIX NG they are written with NG's own keys when the
+app is published (`native_display`): milliseconds, words instead of numbers,
+one `scroll` object and one app palette shared by the text and the effect.
 
 Kept free of Home Assistant imports so it can be tested in isolation.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import math
 import re
 from typing import Any, Final
+
+from .const import FIRMWARE_AWTRIX3, FIRMWARE_AWTRIX_NG
 
 # Key of the display options in an app's stored data.
 CONF_DISPLAY: Final = "display"
@@ -52,6 +57,10 @@ PALETTES: Final = (
     "Rainbow",
 )
 OVERLAYS: Final = ("clear", "snow", "rain", "drizzle", "storm", "thunder", "frost")
+# AWTRIX NG has no "clear": an app without an overlay shows the global one.
+NG_OVERLAYS: Final = ("snow", "rain", "drizzle", "storm", "thunder", "frost")
+# Options AWTRIX NG has no key for: dropped on NG clocks.
+NG_UNSUPPORTED: Final = ("topText", "save")
 
 # Effects and palettes added to the firmware later, or palette files stored on
 # the clock, are accepted by name.
@@ -82,6 +91,21 @@ def _int(data: Mapping[str, Any], key: str, low: int, high: int) -> int | None:
     if not math.isfinite(number):
         raise InvalidDisplayError(key, "invalid_value")
     return int(max(low, min(high, round(number))))
+
+
+def _float(data: Mapping[str, Any], key: str, low: float, high: float) -> float | None:
+    value = data.get(key)
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise InvalidDisplayError(key, "invalid_value")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as err:
+        raise InvalidDisplayError(key, "invalid_value") from err
+    if not math.isfinite(number):
+        raise InvalidDisplayError(key, "invalid_value")
+    return round(max(low, min(high, number)), 1)
 
 
 def _bool(data: Mapping[str, Any], key: str) -> bool | None:
@@ -127,14 +151,19 @@ def _name(data: Mapping[str, Any], key: str) -> str | None:
     return value
 
 
-def _effect_settings(data: Mapping[str, Any]) -> dict[str, Any] | None:
+def _effect_settings(data: Mapping[str, Any], firmware: str) -> dict[str, Any] | None:
     value = data.get("effectSettings")
     if value is None:
         return None
     if not isinstance(value, Mapping):
         raise InvalidDisplayError("effectSettings", "invalid_value")
     clean: dict[str, Any] = {}
-    if (speed := _int(value, "speed", 1, 20)) is not None:
+    if firmware == FIRMWARE_AWTRIX_NG:
+        # A multiplier of the effect's own pace, 1.0 by default.
+        speed = _float(value, "speed", 0.1, 10.0)
+        if speed is not None and speed != 1.0:
+            clean["speed"] = speed
+    elif (speed := _int(value, "speed", 1, 20)) is not None:
         clean["speed"] = speed
     if (palette := _name(value, "palette")) is not None:
         clean["palette"] = palette
@@ -143,11 +172,12 @@ def _effect_settings(data: Mapping[str, Any]) -> dict[str, Any] | None:
     return clean or None
 
 
-def normalize_display(data: Any) -> dict[str, Any]:
+def normalize_display(data: Any, firmware: str = FIRMWARE_AWTRIX3) -> dict[str, Any]:
     """Return the display options worth storing, or raise InvalidDisplayError.
 
-    Unknown keys are dropped. Values equal to the firmware's default are
-    dropped too, so that an app only carries what was actually changed.
+    Unknown keys are dropped, and so are options the firmware does not have.
+    Values equal to the firmware's default are dropped too, so that an app
+    only carries what was actually changed.
     """
     if data is None:
         return {}
@@ -191,16 +221,20 @@ def normalize_display(data: Any) -> dict[str, Any]:
     effect = _name(data, "effect")
     if effect is not None:
         clean["effect"] = effect
-        keep("effectSettings", _effect_settings(data))
+        keep("effectSettings", _effect_settings(data, firmware))
     overlay = data.get("overlay")
+    overlays = NG_OVERLAYS if firmware == FIRMWARE_AWTRIX_NG else OVERLAYS
     if overlay not in (None, ""):
-        if overlay not in OVERLAYS:
+        if overlay not in overlays:
             raise InvalidDisplayError("overlay", "invalid_value")
         clean["overlay"] = overlay
 
     # What the clock does with the app.
     keep("lifetimeMode", _choice(data, "lifetimeMode", (0, 1)), 0)
     keep("save", _bool(data, "save"), False)
+    if firmware == FIRMWARE_AWTRIX_NG:
+        for key in NG_UNSUPPORTED:
+            clean.pop(key, None)
     return clean
 
 
@@ -216,10 +250,101 @@ def _gradient(data: Mapping[str, Any]) -> list[str] | None:
     return colors
 
 
+TEXT_CASES: Final = ("inherit", "upper", "asTyped")
+ICON_MODES: Final = ("fixed", "pushOnce", "push")
+LIFETIME_EXPIRY: Final = ("remove", "mark")
+
+
+def _same(value: Any) -> Any:
+    return value
+
+
+# Options that only change name (and sometimes form) on AWTRIX NG.
+NG_KEYS: Final[dict[str, tuple[str, Callable[[Any], Any]]]] = {
+    "duration": ("durationMs", lambda seconds: seconds * 1000),
+    "textCase": ("textCase", TEXT_CASES.__getitem__),
+    "textOffset": ("textOffsetX", _same),
+    "center": ("textAlign", lambda center: "center" if center else "start"),
+    "pushIcon": ("iconMode", ICON_MODES.__getitem__),
+    "blinkText": ("textBlinkMs", _same),
+    "fadeText": ("textFadeMs", _same),
+    "background": ("backgroundColor", _same),
+    "lifetimeMode": ("lifetimeExpiry", LIFETIME_EXPIRY.__getitem__),
+}
+
+
+def ng_display(display: Mapping[str, Any]) -> dict[str, Any]:
+    """Write stored display options with AWTRIX NG's keys."""
+    out = {
+        name: convert(display[key])
+        for key, (name, convert) in NG_KEYS.items()
+        if key in display
+    }
+    # AWTRIX 3 writes -1 for "no limit", AWTRIX NG 0 (its default).
+    if display.get("repeat", -1) > 0:
+        out["repeat"] = display["repeat"]
+    scroll: dict[str, Any] = {}
+    if display.get("noScroll"):
+        scroll["mode"] = "static"
+    if "scrollSpeed" in display:
+        scroll["speed"] = display["scrollSpeed"]
+    if scroll:
+        out["scroll"] = scroll
+    out.update(_ng_effect(display))
+    if display.get("overlay") not in (None, "clear"):
+        out["overlay"] = display["overlay"]
+    return out
+
+
+def _ng_effect(display: Mapping[str, Any]) -> dict[str, Any]:
+    """The effect, and the one palette an NG app shares with its text."""
+    out: dict[str, Any] = {}
+    palette: str | list[str] | None = None
+    if display.get("rainbow"):
+        palette = "Rainbow"
+    elif "gradient" in display:
+        palette = list(display["gradient"])
+    if "effect" in display:
+        out["effect"] = display["effect"]
+        settings = display.get("effectSettings") or {}
+        if "speed" in settings:
+            out["effectSpeed"] = settings["speed"]
+        if "blend" in settings:
+            out["paletteBlend"] = settings["blend"]
+        # The text style's palette wins: the app has only one.
+        if palette is None:
+            palette = settings.get("palette")
+    if palette is not None:
+        out["palette"] = palette
+    return out
+
+
+def native_display(display: Mapping[str, Any], firmware: str) -> dict[str, Any]:
+    """Return the display options written in the firmware's own keys."""
+    if firmware == FIRMWARE_AWTRIX_NG:
+        return ng_display(display)
+    return dict(display)
+
+
 def apply_display(
-    pages: list[dict[str, Any]], display: Mapping[str, Any] | None
+    pages: list[dict[str, Any]],
+    display: Mapping[str, Any] | None,
+    firmware: str = FIRMWARE_AWTRIX3,
 ) -> list[dict[str, Any]]:
     """Return the pages with the display options added where not already set."""
     if not display:
         return pages
-    return [{**display, **page} for page in pages]
+    defaults = native_display(display, firmware)
+    # On NG a rainbow or gradient text needs `textColor: "palette"`, which
+    # must win over the page's own text color, unless the page brings its
+    # own palette.
+    paint_text = firmware == FIRMWARE_AWTRIX_NG and (
+        display.get("rainbow") or "gradient" in display
+    )
+    result = []
+    for page in pages:
+        merged = {**defaults, **page}
+        if paint_text and "palette" not in page:
+            merged["textColor"] = "palette"
+        result.append(merged)
+    return result

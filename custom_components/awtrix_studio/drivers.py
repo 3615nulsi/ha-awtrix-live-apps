@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import ipaddress
 import json
+import re
 from typing import Any, Final
 
 from .const import FIRMWARE_AWTRIX3, FIRMWARE_AWTRIX_NG
@@ -19,6 +20,10 @@ from .loop import MAX_LOOP, parse_loop, valid_name
 
 AWTRIX3_WIDTH: Final = 32
 AWTRIX3_HEIGHT: Final = 8
+# Names of effects, overlays and palettes accepted from a clock.
+NAME_RE: Final = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+# Longest piece of an error message kept from a clock.
+MAX_ERROR: Final = 120
 # Largest screen accepted from a clock (a TC002 is 52 x 16).
 MAX_SCREEN_PIXELS: Final = 64 * 32
 
@@ -213,6 +218,26 @@ class FirmwareDriver(ABC):
         self, order: list[str], disabled: list[str]
     ) -> tuple[str, str] | None:
         """Return the (topic, payload) setting the loop order over MQTT."""
+        return None
+
+    # What the clock offers, and what it says about the commands it refuses.
+
+    @property
+    def capabilities_topic(self) -> str | None:
+        """Return the topic listing the effects, overlays and palettes, if any."""
+        return None
+
+    def parse_capabilities(self, payload: str) -> dict[str, list[str]] | None:
+        """Return the names the clock offers, by kind."""
+        return None
+
+    @property
+    def result_topics(self) -> list[str]:
+        """Return the topic filters carrying the clock's answers to commands."""
+        return []
+
+    def parse_result(self, topic: str, payload: str) -> tuple[str, str | None] | None:
+        """Return (command topic, refusal or None when accepted) for an answer."""
         return None
 
     @property
@@ -458,6 +483,53 @@ class AwtrixNGDriver(FirmwareDriver):
         return f"{self.prefix}/cmd/apps/order", json.dumps(
             {"order": order, "disabled": disabled}, ensure_ascii=False
         )
+
+    @property
+    def capabilities_topic(self) -> str:
+        """Published once per connection (retained)."""
+        return f"{self.prefix}/state/capabilities"
+
+    def parse_capabilities(self, payload: str) -> dict[str, list[str]] | None:
+        """Keep the effect, overlay and palette names, and only valid ones."""
+        data = _json(payload)
+        if not isinstance(data, dict):
+            return None
+        capabilities: dict[str, list[str]] = {}
+        for kind in ("effects", "paletteEffects", "overlays", "palettes"):
+            names = data.get(kind)
+            if isinstance(names, list):
+                capabilities[kind] = [
+                    name
+                    for name in names[:MAX_LOOP]
+                    if isinstance(name, str) and NAME_RE.fullmatch(name)
+                ]
+        return capabilities
+
+    @property
+    def result_topics(self) -> list[str]:
+        """Every command is answered on its topic with `/result` added."""
+        return [
+            f"{self.prefix}/cmd/apps/pushed/+/result",
+            f"{self.prefix}/cmd/indicators/+/result",
+        ]
+
+    def parse_result(self, topic: str, payload: str) -> tuple[str, str | None] | None:
+        """`{"ok": true}`, or `{"ok": false, "error": {...}}` naming the field."""
+        if not topic.endswith("/result"):
+            return None
+        data = _json(payload)
+        if not isinstance(data, dict) or not isinstance(data.get("ok"), bool):
+            return None
+        command = topic.removesuffix("/result")
+        if data["ok"]:
+            return command, None
+        error = data.get("error") if isinstance(data.get("error"), dict) else {}
+        parts = [
+            str(error[key])[:MAX_ERROR]
+            for key in ("field", "message", "code")
+            if isinstance(error.get(key), str) and error[key]
+        ]
+        return command, ": ".join(parts[:2]) or "refused"
 
 
 DRIVERS: dict[str, type[FirmwareDriver]] = {

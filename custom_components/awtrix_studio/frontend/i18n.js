@@ -245,6 +245,11 @@ const STRINGS = {
     save_on_clock: "Keep on the clock after it restarts",
     save_on_clock_help: "Each update is then written to the clock's flash memory, which wears it out: only for apps that rarely change. Awtrix Studio publishes its apps again after a restart anyway.",
     effect_not_simulated: "“{name}” is animated on the clock, not in this preview.",
+    text_style_help_ng: "Rainbow and gradient color the text with the app's palette, which AWTRIX NG shares with the background effect.",
+    effect_speed_ng: "Effect speed (×)",
+    effect_speed_help_ng: "A multiplier: 2 is twice as fast, 0.5 half as fast.",
+    clock_refused: "Refused by the clock",
+    clock_refused_detail: "The clock refused the saved version: {detail}",
     // loop order
     reorder: "Order",
     order_title: "Order of the apps",
@@ -530,6 +535,11 @@ const STRINGS = {
     save_on_clock: "Garder sur l'horloge après un redémarrage",
     save_on_clock_help: "Chaque mise à jour est alors écrite dans la mémoire flash de l'horloge, qui s'use : à réserver aux apps qui changent rarement. Awtrix Studio republie de toute façon ses apps après un redémarrage.",
     effect_not_simulated: "« {name} » est animé sur l'horloge, pas dans cet aperçu.",
+    text_style_help_ng: "L'arc-en-ciel et le dégradé colorent le texte avec la palette de l'app, qu'AWTRIX NG partage avec l'effet de fond.",
+    effect_speed_ng: "Vitesse de l'effet (×)",
+    effect_speed_help_ng: "Un multiplicateur : 2 va deux fois plus vite, 0,5 deux fois moins.",
+    clock_refused: "Refusée par l'horloge",
+    clock_refused_detail: "L'horloge a refusé la version enregistrée : {detail}",
     // ordre de la boucle
     reorder: "Ordre",
     order_title: "Ordre des apps",
