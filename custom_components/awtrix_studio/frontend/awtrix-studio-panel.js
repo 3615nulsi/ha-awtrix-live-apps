@@ -13,6 +13,8 @@ import { MAX_STOPS, PRESETS, colorAt, cssGradient, formStops, presetCss, rgbToHe
 
 const PREVIEW_DEBOUNCE = 350;
 const MAX_IMPORT_BYTES = 512 * 1024;
+const LAMETRIC_THUMB = "https://developer.lametric.com/content/apps/icon_thumbs/";
+const ICON_SEARCH_DEBOUNCE = 400;
 const MIRROR_STALE_MS = 5000;
 
 const STARTER_APP_TEMPLATE = `{#- Render a JSON object (one page) or a list of objects
@@ -58,6 +60,8 @@ const ICON_PATHS = {
   next: "M9 6l6 6-6 6",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
   download: "M12 4v11M7 10l5 5 5-5M5 20h14",
+  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4",
+  close: "M6 6l12 12M18 6L6 18",
   upload: "M12 16V5M7 10l5-5 5 5M5 20h14",
 };
 function icon(name) {
@@ -208,6 +212,21 @@ pre { margin: 0; padding: 12px; border-radius: 8px; font-family: var(--ha-font-f
 .notice { color: var(--success-color, #2e7d32); }
 details summary { cursor: pointer; font-size: 13px; }
 details pre { margin-top: 8px; }
+.icon-row { flex-wrap: nowrap; }
+.icon-row input { flex: 1; min-width: 0; }
+.icon-preview { width: 38px; height: 38px; flex: none; border-radius: 6px; image-rendering: pixelated; background: #0b0b0d; }
+.picker-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.picker { background: var(--card-background-color, #fff); color: var(--primary-text-color, #1f2328); border-radius: 14px; width: min(760px, 100%);
+  max-height: min(720px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 18px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+.picker-search { font: inherit; font-size: 15px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--divider-color, #c4c7cc);
+  background: var(--card-background-color, #fff); color: inherit; }
+.picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; overflow: auto; min-height: 120px; }
+.picker-item { font: inherit; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--divider-color, #e3e5e8); background: none; color: inherit; min-width: 0; }
+.picker-item:hover, .picker-item:focus-visible { border-color: var(--primary-color, #0277bd); }
+.picker-item img { width: 32px; height: 32px; image-rendering: pixelated; background: #0b0b0d; border-radius: 4px; }
+.picker-name { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-id { font-size: 11px; }
 @media (max-width: 600px) { .fields { grid-template-columns: minmax(0, 1fr); } dl { grid-template-columns: minmax(0, 1fr); } }
 `;
 
@@ -371,6 +390,7 @@ class AwtrixStudioPanel extends HTMLElement {
   // ------------------------------------------------------------- overview
 
   _showOverview() {
+    this._closeIconPicker();
     this._view = { name: "overview" };
     this._stop("preview");
     clearInterval(this._cycleTimer);
@@ -813,6 +833,13 @@ class AwtrixStudioPanel extends HTMLElement {
         decimals: d.decimals ?? "",
         show_unit: d.show_unit ?? true,
         hide_when_zero: d.hide_when_zero ?? false,
+        progress: d.progress ?? false,
+        progress_entity: d.progress_entity || "",
+        progress_min: d.progress_min ?? 0,
+        progress_max: d.progress_max ?? 100,
+        progress_same_color: !d.progress_color,
+        progress_color: toHex(d.progress_color, "#4FC3F7"),
+        progress_bg: toHex(d.progress_bg, "#2E2E2E"),
         threshold_1: d.threshold_1 ?? "",
         color_1: toHex(d.color_1, "#FFB74D"),
         threshold_2: d.threshold_2 ?? "",
@@ -852,6 +879,15 @@ class AwtrixStudioPanel extends HTMLElement {
     };
   }
 
+  _progressPayload() {
+    const f = this._form;
+    if (!f.progress) return { progress: false };
+    const payload = { progress: true, progress_entity: f.progress_entity.trim(), progress_min: numberOrEmpty(f.progress_min),
+      progress_max: numberOrEmpty(f.progress_max), progress_bg: f.progress_bg };
+    if (!f.progress_same_color) payload.progress_color = f.progress_color;
+    return payload;
+  }
+
   _gradientPayload() {
     const f = this._form;
     if (f.color_mode !== "gradient") return { color_mode: f.color_mode };
@@ -868,6 +904,7 @@ class AwtrixStudioPanel extends HTMLElement {
     if (kind === "app" && f.mode === "simple") {
       return { mode: "simple", app_name: f.app_name, entity_id: f.entity_id, label: f.label, icon: f.icon, color: f.color,
         decimals: numberOrEmpty(f.decimals), show_unit: f.show_unit, hide_when_zero: f.hide_when_zero,
+        ...this._progressPayload(),
         threshold_1: numberOrEmpty(f.threshold_1), color_1: f.color_1, threshold_2: numberOrEmpty(f.threshold_2), color_2: f.color_2,
         ...this._gradientPayload() };
     }
@@ -973,12 +1010,150 @@ class AwtrixStudioPanel extends HTMLElement {
         h("span", {}, label, help ? h("span", { class: "muted", style: "display:block" }, help) : null)), error);
   }
 
-  _entityInput() {
-    const listId = "awtrix-studio-entities";
+  _entityInput(key = "entity_id", placeholder = this.t("entity_placeholder")) {
+    const listId = `awtrix-studio-entities-${key}`;
     const list = h("datalist", { id: listId });
     Object.keys(this._hass.states).sort().slice(0, 5000).forEach((id) => list.append(h("option", { value: id })));
-    return h("div", {}, this._input("entity_id", "text", { list: listId, autocomplete: "off", spellcheck: "false",
-      placeholder: this.t("entity_placeholder") }), list);
+    return h("div", {}, this._input(key, "text", { list: listId, autocomplete: "off", spellcheck: "false", placeholder }), list);
+  }
+
+  // ------------------------------------------------------------- icons
+
+  _iconField() {
+    const f = this._form;
+    this._iconPreview = h("canvas", { class: "icon-preview", width: 8, height: 8, "aria-hidden": "true" });
+    const input = this._input("icon", "text", { maxlength: 64, spellcheck: "false", placeholder: "lametric:2422" });
+    input.addEventListener("input", () => this._drawIconPreview());
+    this._iconInput = input;
+    const control = h("div", { class: "row icon-row" }, this._iconPreview, input,
+      h("button", { class: "btn small", type: "button", onClick: () => this._openIconPicker() }, icon("search"), this.t("icon_pick")));
+    this._drawIconPreview();
+    return this._field("icon", this.t("icon"), control, this.t("icon_help_studio"), true);
+  }
+
+  async _drawIconPreview() {
+    const canvas = this._iconPreview;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#0b0b0d";
+    ctx.fillRect(0, 0, 8, 8);
+    const match = /^lametric:(\d{1,7})$/.exec(this._form.icon || "");
+    canvas.title = match ? "" : this.t("icon_on_clock");
+    if (!match) return;
+    const id = Number(match[1]);
+    const pixels = await this._iconPixels(id);
+    if (!pixels || this._form.icon !== `lametric:${id}`) return;
+    pixels.forEach((value, i) => {
+      if (!Number.isInteger(value) || value <= 0) return;
+      ctx.fillStyle = parseColor(value);
+      ctx.fillRect(i % 8, Math.floor(i / 8), 1, 1);
+    });
+  }
+
+  async _iconPixels(id) {
+    this._iconCache = this._iconCache || new Map();
+    if (!this._iconCache.has(id)) {
+      this._iconCache.set(id, this._hass.callWS({ type: "awtrix_studio/icons/get", icon_id: id })
+        .then((r) => (Array.isArray(r.pixels) && r.pixels.length === 64 ? r.pixels : null))
+        .catch(() => null));
+    }
+    return this._iconCache.get(id);
+  }
+
+  _openIconPicker() {
+    this._closeIconPicker();
+    const search = h("input", { type: "search", class: "picker-search", placeholder: this.t("icon_search_placeholder"),
+      "aria-label": this.t("icon_search_placeholder"), maxlength: 64 });
+    const grid = h("div", { class: "picker-grid", role: "listbox", "aria-label": this.t("icon_pick") });
+    const status = h("div", { class: "muted", role: "status" });
+    const more = h("button", { class: "btn small", type: "button", hidden: true }, this.t("icon_more"));
+    const state = { query: "", page: 1, token: 0 };
+
+    const run = async (append) => {
+      const token = ++state.token;
+      status.textContent = this.t("icon_searching");
+      more.hidden = true;
+      let result;
+      try {
+        result = await this._hass.callWS({ type: "awtrix_studio/icons/search", query: state.query, page: state.page });
+      } catch (err) {
+        if (token === state.token) status.textContent = this.t("icon_unavailable");
+        return;
+      }
+      if (token !== state.token) return;
+      if (!append) clear(grid);
+      (result.icons || []).forEach((item) => {
+        const id = Number(item.id);
+        if (!Number.isInteger(id) || id <= 0) return;
+        const img = h("img", { src: `${LAMETRIC_THUMB}${id}`, alt: "", width: 32, height: 32, loading: "lazy" });
+        grid.append(h("button", { class: "picker-item", type: "button", role: "option", title: String(item.name || id),
+          onClick: () => this._pickIcon(id) },
+          img, h("span", { class: "picker-name" }, String(item.name || id)),
+          h("span", { class: "muted picker-id" }, `${id}${item.animated ? " · " + this.t("icon_animated") : ""}`)));
+      });
+      status.textContent = grid.children.length ? "" : this.t("icon_none");
+      more.hidden = !result.more;
+    };
+    search.addEventListener("input", () => {
+      clearTimeout(this._iconSearchTimer);
+      this._iconSearchTimer = setTimeout(() => { state.query = search.value.trim(); state.page = 1; run(false); }, ICON_SEARCH_DEBOUNCE);
+    });
+    more.addEventListener("click", () => { state.page += 1; run(true); });
+
+    const dialog = h("div", { class: "picker", role: "dialog", "aria-modal": "true", "aria-label": this.t("icon_pick") },
+      h("div", { class: "row between" }, h("h2", {}, this.t("icon_pick")),
+        h("button", { class: "icon-btn", type: "button", "aria-label": this.t("cancel"), onClick: () => this._closeIconPicker() }, icon("close"))),
+      h("div", { class: "muted" }, this.t("icon_picker_help")),
+      search, status, grid, more);
+    this._picker = h("div", { class: "picker-backdrop", onClick: (e) => { if (e.target === this._picker) this._closeIconPicker(); } }, dialog);
+    this._picker.addEventListener("keydown", (e) => { if (e.key === "Escape") this._closeIconPicker(); });
+    this.shadowRoot.append(this._picker);
+    search.focus();
+    run(false);
+  }
+
+  _closeIconPicker() {
+    clearTimeout(this._iconSearchTimer);
+    if (this._picker) this._picker.remove();
+    this._picker = null;
+  }
+
+  _pickIcon(id) {
+    this._form.icon = `lametric:${id}`;
+    if (this._iconInput) this._iconInput.value = this._form.icon;
+    this._closeIconPicker();
+    this._drawIconPreview();
+    this._schedulePreview();
+  }
+
+  // ---------------------------------------------------------- progress
+
+  _progressSection() {
+    const f = this._form;
+    const body = h("div", { class: "color-body" });
+    const render = () => {
+      clear(body);
+      if (!f.progress) return;
+      const sameColor = h("label", { class: "check" },
+        h("input", { type: "checkbox", checked: f.progress_same_color,
+          onChange: (e) => { f.progress_same_color = e.target.checked; render(); this._schedulePreview(); } }),
+        h("span", {}, this.t("progress_same_color")));
+      body.append(
+        this._field("progress_entity", this.t("progress_entity"), this._entityInput("progress_entity", this.t("progress_entity_placeholder")), this.t("progress_entity_help"), true),
+        h("div", { class: "fields" },
+          this._field("progress_min", this.t("progress_min"), this._input("progress_min", "number", { step: "any" })),
+          this._field("progress_max", this.t("progress_max"), this._input("progress_max", "number", { step: "any" }))),
+        sameColor,
+        h("div", { class: "row" },
+          f.progress_same_color ? "" : this._field("progress_color", this.t("progress_color"), this._input("progress_color", "color")),
+          this._field("progress_bg", this.t("progress_bg"), this._input("progress_bg", "color"))));
+    };
+    const toggle = h("label", { class: "check" },
+      h("input", { type: "checkbox", checked: f.progress,
+        onChange: (e) => { f.progress = e.target.checked; render(); this._schedulePreview(); } }),
+      h("span", {}, this.t("progress_show"), h("span", { class: "muted", style: "display:block" }, this.t("progress_help"))));
+    render();
+    return h("fieldset", { class: "field wide" }, h("legend", {}, this.t("progress")), toggle, body);
   }
 
   _renderFields() {
@@ -1017,12 +1192,12 @@ class AwtrixStudioPanel extends HTMLElement {
     if (kind === "app") {
       box.append(
         this._field("label", this.t("label"), this._input("label", "text", { maxlength: 64 }), this.t("label_help")),
-        this._field("icon", this.t("icon"), this._input("icon", "text", { maxlength: 64, spellcheck: "false" }), this.t("icon_help")),
+        this._iconField(),
         this._field("color", this.t("text_color"), this._input("color", "color")),
         this._field("decimals", this.t("decimals"), this._input("decimals", "number", { min: 0, max: 4, step: 1 }), this.t("decimals_help")),
         this._check("show_unit", this.t("show_unit")),
         this._check("hide_when_zero", this.t("hide_when_zero")));
-      box.append(this._colorSection(["fixed", "steps", "gradient"], "color_by_value"));
+      box.append(this._colorSection(["fixed", "steps", "gradient"], "color_by_value"), this._progressSection());
     } else {
       const effect = h("select", { id: "f-effect", onChange: (e) => { f.effect = e.target.value; this._schedulePreview(); } },
         ...["none", "blink", "fade"].map((v) => h("option", { value: v }, this.t(`effect_${v}`))));

@@ -64,6 +64,12 @@ from .const import (
     CONF_MODE,
     CONF_PAGE_INTERVAL,
     CONF_PREFIX,
+    CONF_PROGRESS,
+    CONF_PROGRESS_BG,
+    CONF_PROGRESS_COLOR,
+    CONF_PROGRESS_ENTITY,
+    CONF_PROGRESS_MAX,
+    CONF_PROGRESS_MIN,
     CONF_SHOW_UNIT,
     CONF_TEMPLATE,
     CONF_THRESHOLD_1,
@@ -78,6 +84,9 @@ from .const import (
     DEFAULT_LIFETIME,
     DEFAULT_PAGE_INTERVAL,
     DEFAULT_PREFIX,
+    DEFAULT_PROGRESS_BG,
+    DEFAULT_PROGRESS_MAX,
+    DEFAULT_PROGRESS_MIN,
     DOMAIN,
     EFFECT_NONE,
     EFFECTS,
@@ -377,6 +386,10 @@ class AppSubentryFlow(_LiveSubentryFlow):
                     break
                 if data.get(threshold) is not None and not data.get(color):
                     errors[color] = "color_required"
+            if data.get(CONF_PROGRESS) and float(
+                data.get(CONF_PROGRESS_MAX, DEFAULT_PROGRESS_MAX)
+            ) <= float(data.get(CONF_PROGRESS_MIN, DEFAULT_PROGRESS_MIN)):
+                errors[CONF_PROGRESS_MAX] = "invalid_range"
             if not errors:
                 return self._save(data[CONF_APP_NAME], data[CONF_APP_NAME], data)
 
@@ -402,6 +415,18 @@ class AppSubentryFlow(_LiveSubentryFlow):
                 vol.Optional(CONF_THRESHOLD_2): _any_number(),
                 vol.Optional(CONF_COLOR_2): ColorRGBSelector(),
                 **_gradient_fields(),
+                vol.Required(CONF_PROGRESS, default=False): BooleanSelector(),
+                vol.Optional(CONF_PROGRESS_ENTITY): EntitySelector(),
+                vol.Required(
+                    CONF_PROGRESS_MIN, default=DEFAULT_PROGRESS_MIN
+                ): _any_number(),
+                vol.Required(
+                    CONF_PROGRESS_MAX, default=DEFAULT_PROGRESS_MAX
+                ): _any_number(),
+                vol.Optional(CONF_PROGRESS_COLOR): ColorRGBSelector(),
+                vol.Required(
+                    CONF_PROGRESS_BG, default=DEFAULT_PROGRESS_BG
+                ): ColorRGBSelector(),
             }
         )
         return self._show("simple", schema, user_input, errors)

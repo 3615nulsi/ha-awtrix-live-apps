@@ -210,6 +210,7 @@ export function screenToPixels(values) {
 // it (drawn pixel by pixel), else drawn as a plain image over the icon area.
 const ICONS = new Map();
 function loadIcon(id, onReady) {
+  id = String(id).replace(/^lametric:/, "");
   if (!/^\d{1,7}$/.test(id)) return null;
   let entry = ICONS.get(id);
   if (!entry) {

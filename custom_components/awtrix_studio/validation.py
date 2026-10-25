@@ -45,6 +45,12 @@ from .const import (
     CONF_LIFETIME,
     CONF_MODE,
     CONF_PAGE_INTERVAL,
+    CONF_PROGRESS,
+    CONF_PROGRESS_BG,
+    CONF_PROGRESS_COLOR,
+    CONF_PROGRESS_ENTITY,
+    CONF_PROGRESS_MAX,
+    CONF_PROGRESS_MIN,
     CONF_SHOW_UNIT,
     CONF_TEMPLATE,
     CONF_THRESHOLD_1,
@@ -57,6 +63,9 @@ from .const import (
     DEFAULT_INDICATOR_COLOR,
     DEFAULT_LIFETIME,
     DEFAULT_PAGE_INTERVAL,
+    DEFAULT_PROGRESS_BG,
+    DEFAULT_PROGRESS_MAX,
+    DEFAULT_PROGRESS_MIN,
     EFFECT_NONE,
     EFFECTS,
     GRADIENT_CUSTOM,
@@ -203,6 +212,28 @@ def _gradient(data: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _progress(data: Mapping[str, Any]) -> dict[str, Any]:
+    """The optional progress bar of a simple app."""
+    if not _bool(data, CONF_PROGRESS, False):
+        return {CONF_PROGRESS: False}
+    clean: dict[str, Any] = {CONF_PROGRESS: True}
+    source = data.get(CONF_PROGRESS_ENTITY)
+    if source not in (None, ""):
+        if not isinstance(source, str) or not ENTITY_ID_RE.fullmatch(source):
+            raise Invalid(CONF_PROGRESS_ENTITY, "invalid_entity")
+        clean[CONF_PROGRESS_ENTITY] = source
+    low = _number(data, CONF_PROGRESS_MIN, -1e9, 1e9)
+    high = _number(data, CONF_PROGRESS_MAX, -1e9, 1e9)
+    clean[CONF_PROGRESS_MIN] = DEFAULT_PROGRESS_MIN if low is None else low
+    clean[CONF_PROGRESS_MAX] = DEFAULT_PROGRESS_MAX if high is None else high
+    if clean[CONF_PROGRESS_MAX] <= clean[CONF_PROGRESS_MIN]:
+        raise Invalid(CONF_PROGRESS_MAX, "invalid_range")
+    if (color := _color(data, CONF_PROGRESS_COLOR, None)) is not None:
+        clean[CONF_PROGRESS_COLOR] = color
+    clean[CONF_PROGRESS_BG] = _color(data, CONF_PROGRESS_BG, list(DEFAULT_PROGRESS_BG))
+    return clean
+
+
 def _app_colors(data: Mapping[str, Any]) -> dict[str, Any]:
     """How a simple app picks its color: fixed, by steps or by gradient."""
     color_mode = app_color_mode(data)
@@ -287,6 +318,7 @@ def normalize_app(
         if decimals is not None:
             clean[CONF_DECIMALS] = int(decimals)
         clean.update(_app_colors(data))
+        clean.update(_progress(data))
         return clean
 
     return {

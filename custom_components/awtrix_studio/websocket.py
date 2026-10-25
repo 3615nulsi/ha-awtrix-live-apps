@@ -40,11 +40,13 @@ from .const import (
     CONF_MODE,
     CONF_PREFIX,
     CONF_TEMPLATE,
+    DATA_ICONS,
     DOMAIN,
     MODE_SIMPLE,
     SUBENTRY_TYPE_APP,
     SUBENTRY_TYPE_INDICATOR,
 )
+from .icons import IconError, IconStore
 from .manager import MANAGED_SUBENTRY_TYPES, ClockManager
 from .pages import InvalidPagesError, parse_pages, serialize_page
 from .templates import (
@@ -92,6 +94,8 @@ def async_setup(hass: HomeAssistant) -> None:
         ws_republish,
         ws_export,
         ws_import,
+        ws_icon_search,
+        ws_icon_get,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -671,4 +675,48 @@ def ws_import(
     connection.send_result(
         msg["id"],
         {"error": None, "imported": imported, "items": [p.as_dict() for p in plans]},
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "awtrix_studio/icons/search",
+        vol.Required("query"): vol.All(str, vol.Length(max=64)),
+        vol.Optional("page", default=1): vol.All(int, vol.Range(min=1, max=100)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_icon_search(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Search the LaMetric icon gallery (through Home Assistant)."""
+    icons: IconStore = hass.data[DATA_ICONS]
+    try:
+        result = await icons.async_search(msg["query"].strip(), msg["page"])
+    except IconError as err:
+        _error(connection, msg, "icons_unavailable", str(err))
+        return
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "awtrix_studio/icons/get",
+        vol.Required("icon_id"): vol.All(int, vol.Range(min=1, max=9_999_999)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_icon_get(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Download a LaMetric icon (once) and return its pixels for the preview."""
+    icons: IconStore = hass.data[DATA_ICONS]
+    icon = await icons.async_get(msg["icon_id"])
+    if icon is None:
+        _error(connection, msg, "icons_unavailable", "Icon not available")
+        return
+    connection.send_result(
+        msg["id"], {"pixels": icon["pixels"], "animated": icon["animated"]}
     )

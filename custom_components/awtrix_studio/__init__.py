@@ -19,8 +19,9 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 
 from . import websocket
-from .const import CONF_FIRMWARE, CONF_PREFIX, DOMAIN, SERVICE_REFRESH
+from .const import CONF_FIRMWARE, CONF_PREFIX, DATA_ICONS, DOMAIN, SERVICE_REFRESH
 from .drivers import get_driver
+from .icons import IconStore
 from .manager import MANAGED_SUBENTRY_TYPES, ClockManager, subentry_topic
 from .panel import async_register_panel
 
@@ -44,6 +45,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             await entry.runtime_data.async_republish_all()
 
     hass.services.async_register(DOMAIN, SERVICE_REFRESH, _async_refresh)
+    icons = IconStore(hass)
+    await icons.async_load()
+    hass.data[DATA_ICONS] = icons
     websocket.async_setup(hass)
     await async_register_panel(hass)
     return True
@@ -57,7 +61,9 @@ async def async_setup_entry(
         raise ConfigEntryNotReady("MQTT is not available")
 
     manager = ClockManager(
-        hass, get_driver(entry.data[CONF_FIRMWARE], entry.data[CONF_PREFIX])
+        hass,
+        get_driver(entry.data[CONF_FIRMWARE], entry.data[CONF_PREFIX]),
+        hass.data[DATA_ICONS],
     )
     for subentry in entry.subentries.values():
         if subentry.subentry_type in MANAGED_SUBENTRY_TYPES:

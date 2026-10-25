@@ -37,6 +37,7 @@ SIMPLE_APP = {
     "color": [255, 255, 255],
     "show_unit": True,
     "hide_when_zero": False,
+    "progress": False,
     "color_mode": "gradient",
     "gradient": "high_bad",
     "gradient_min": 400.0,

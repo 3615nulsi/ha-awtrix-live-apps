@@ -34,6 +34,12 @@ from .const import (
     CONF_HIDE_WHEN_ZERO,
     CONF_ICON,
     CONF_LABEL,
+    CONF_PROGRESS,
+    CONF_PROGRESS_BG,
+    CONF_PROGRESS_COLOR,
+    CONF_PROGRESS_ENTITY,
+    CONF_PROGRESS_MAX,
+    CONF_PROGRESS_MIN,
     CONF_SHOW_UNIT,
     CONF_THRESHOLD_1,
     CONF_THRESHOLD_2,
@@ -41,6 +47,9 @@ from .const import (
     DEFAULT_COLOR,
     DEFAULT_EFFECT_INTERVAL,
     DEFAULT_INDICATOR_COLOR,
+    DEFAULT_PROGRESS_BG,
+    DEFAULT_PROGRESS_MAX,
+    DEFAULT_PROGRESS_MIN,
     EFFECT_NONE,
     EFFECTS,
     INDICATOR_COLOR_MODES,
@@ -179,6 +188,25 @@ def build_app_template(options: Mapping[str, Any]) -> str:
     lines.append(f"{{%- set text = {text} -%}}")
 
     lines.append(f"{{%- set color = {jinja_str(color)} -%}}")
+    lines += _color_lines(options)
+
+    payload = '{"text": text, "color": color'
+    if icon:
+        payload += f', "icon": {jinja_str(icon)}'
+    payload += "}"
+    if not options.get(CONF_PROGRESS):
+        lines += [f"{{{{ {payload} | tojson }}}}", "{%- endif -%}"]
+        return "\n".join(lines)
+
+    lines.append(f"{{%- set page = {payload} -%}}")
+    lines += _progress_lines(options, entity)
+    lines += ["{{ page | tojson }}", "{%- endif -%}"]
+    return "\n".join(lines)
+
+
+def _color_lines(options: Mapping[str, Any]) -> list[str]:
+    """Lines changing `color` by steps or along a gradient."""
+    lines: list[str] = []
     color_mode = app_color_mode(options)
     if color_mode == COLOR_GRADIENT:
         lines += [
@@ -200,13 +228,36 @@ def build_app_template(options: Mapping[str, Any]) -> str:
             f"{{%- if num is not none and num > {threshold!r} -%}}"
             f"{{%- set color = {jinja_str(above)} -%}}{{%- endif -%}}"
         )
+    return lines
 
-    payload = '{"text": text, "color": color'
-    if icon:
-        payload += f', "icon": {jinja_str(icon)}'
-    payload += "}"
-    lines += [f"{{{{ {payload} | tojson }}}}", "{%- endif -%}"]
-    return "\n".join(lines)
+
+def _progress_lines(options: Mapping[str, Any], entity: str) -> list[str]:
+    """Lines adding a progress bar to `page`, from a value between min and max."""
+    source = options.get(CONF_PROGRESS_ENTITY) or entity
+    source = _entity_id(source)
+    low = _number(options.get(CONF_PROGRESS_MIN))
+    high = _number(options.get(CONF_PROGRESS_MAX))
+    low = DEFAULT_PROGRESS_MIN if low is None else low
+    high = DEFAULT_PROGRESS_MAX if high is None else high
+    if high <= low:
+        raise InvalidSimpleOptionsError("the progress maximum must exceed the minimum")
+    bar = (
+        jinja_str(rgb_to_hex(options[CONF_PROGRESS_COLOR], DEFAULT_COLOR))
+        if options.get(CONF_PROGRESS_COLOR)
+        else "color"
+    )
+    background = jinja_str(
+        rgb_to_hex(options.get(CONF_PROGRESS_BG), DEFAULT_PROGRESS_BG)
+    )
+    return [
+        "{#- Progress bar: the value between min and max, as 0 to 100. -#}",
+        f"{{%- set p = states({jinja_str(source)}) -%}}",
+        "{%- if p | is_number -%}",
+        f"{{%- set ratio = (p | float - {low!r}) / {high - low!r} -%}}",
+        "{%- set page = dict(page, progress=([[ratio * 100, 0] | max, 100] | min)"
+        f" | round(0) | int, progressC={bar}, progressBC={background}) -%}}",
+        "{%- endif -%}",
+    ]
 
 
 def build_indicator_template(options: Mapping[str, Any]) -> str:

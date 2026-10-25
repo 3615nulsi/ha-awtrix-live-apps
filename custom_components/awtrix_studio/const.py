@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Final
 
 DOMAIN: Final = "awtrix_studio"
+# hass.data key of the shared LaMetric icon store.
+DATA_ICONS: Final = f"{DOMAIN}_icons"
 
 # Clock (config entry) settings
 CONF_FIRMWARE: Final = "firmware"
@@ -97,3 +99,14 @@ APP_NAME_PATTERN: Final = r"^[A-Za-z0-9_-]{1,32}$"
 DATA_CHANGE_COOLDOWN: Final = 1.0
 
 SERVICE_REFRESH: Final = "refresh"
+
+# Simple mode, progress bar
+CONF_PROGRESS: Final = "progress"
+CONF_PROGRESS_ENTITY: Final = "progress_entity"
+CONF_PROGRESS_MIN: Final = "progress_min"
+CONF_PROGRESS_MAX: Final = "progress_max"
+CONF_PROGRESS_COLOR: Final = "progress_color"
+CONF_PROGRESS_BG: Final = "progress_bg"
+DEFAULT_PROGRESS_MIN: Final = 0.0
+DEFAULT_PROGRESS_MAX: Final = 100.0
+DEFAULT_PROGRESS_BG: Final = [46, 46, 46]

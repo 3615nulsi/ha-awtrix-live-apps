@@ -82,19 +82,28 @@
             "color_mode": "Couleur selon la valeur",
             "gradient": "Dégradé",
             "gradient_min": "Minimum du dégradé",
-            "gradient_max": "Maximum du dégradé"
+            "gradient_max": "Maximum du dégradé",
+            "progress": "Barre de progression",
+            "progress_entity": "Entité de la barre de progression",
+            "progress_min": "Barre vide à",
+            "progress_max": "Barre pleine à",
+            "progress_color": "Couleur de la barre",
+            "progress_bg": "Fond de la barre"
           },
           "data_description": {
             "app_name": "Nom de l'app sur l'horloge. Il ne pourra plus être modifié.",
             "label": "Texte affiché avant la valeur, par exemple `CO2`.",
-            "icon": "Identifiant d'icône LaMetric (par exemple `2422`) ou nom d'un fichier d'icône présent sur l'horloge.",
+            "icon": "`lametric:2422` pour une icône de la galerie LaMetric (envoyée par Awtrix Studio, rien à télécharger sur l'horloge ; le panneau propose un sélecteur), ou le nom d'un fichier d'icône présent sur l'horloge.",
             "decimals": "Laissez vide pour afficher la valeur telle quelle.",
             "threshold_1": "Facultatif. Au-dessus de cette valeur, le texte prend la couleur du premier seuil.",
             "threshold_2": "Facultatif. Au-dessus de cette valeur, le texte prend la couleur du second seuil.",
             "color_mode": "Fixe : toujours la couleur du texte. Paliers : les seuils ci-dessous. Dégradé : la couleur évolue en douceur entre le minimum et le maximum.",
             "gradient": "Utilisé en mode dégradé. Les dégradés personnalisés se modifient dans le panneau.",
             "gradient_min": "À cette valeur ou en dessous, la première couleur du dégradé.",
-            "gradient_max": "À cette valeur ou au-dessus, la dernière couleur du dégradé."
+            "gradient_max": "À cette valeur ou au-dessus, la dernière couleur du dégradé.",
+            "progress": "Affiche une barre en bas de l'écran, par exemple une batterie ou un pourcentage.",
+            "progress_entity": "Laisser vide pour utiliser l'entité de l'app.",
+            "progress_color": "Laisser vide pour reprendre la couleur du texte (elle suit le dégradé ou les paliers)."
           }
         },
         "template": {

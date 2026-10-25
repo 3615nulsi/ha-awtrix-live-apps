@@ -82,19 +82,28 @@
             "color_mode": "Color according to the value",
             "gradient": "Gradient",
             "gradient_min": "Gradient minimum",
-            "gradient_max": "Gradient maximum"
+            "gradient_max": "Gradient maximum",
+            "progress": "Progress bar",
+            "progress_entity": "Progress bar entity",
+            "progress_min": "Progress bar: empty at",
+            "progress_max": "Progress bar: full at",
+            "progress_color": "Progress bar color",
+            "progress_bg": "Progress bar background"
           },
           "data_description": {
             "app_name": "Name of the app on the clock. It cannot be changed later.",
             "label": "Text shown before the value, for example `CO2`.",
-            "icon": "LaMetric icon ID (for example `2422`) or name of an icon file stored on the clock.",
+            "icon": "`lametric:2422` for an icon of the LaMetric gallery (sent by Awtrix Studio, nothing to upload; the panel has a picker), or the name of an icon file stored on the clock.",
             "decimals": "Leave empty to show the value as is.",
             "threshold_1": "Optional. Above this value, the text takes the first threshold's color.",
             "threshold_2": "Optional. Above this value, the text takes the second threshold's color.",
             "color_mode": "Fixed: always the text color. Steps: thresholds below. Gradient: the color changes smoothly between the minimum and the maximum.",
             "gradient": "Used in gradient mode. Custom gradients are edited in the panel.",
             "gradient_min": "At or below this value, the gradient's first color.",
-            "gradient_max": "At or above this value, the gradient's last color."
+            "gradient_max": "At or above this value, the gradient's last color.",
+            "progress": "Shows a bar at the bottom of the screen, for example a battery or a percentage.",
+            "progress_entity": "Leave empty to use the app's entity.",
+            "progress_color": "Leave empty to use the text color (it follows the gradient or the steps)."
           }
         },
         "template": {

@@ -30,6 +30,7 @@ from .const import (
     SUBENTRY_TYPE_INDICATOR,
 )
 from .drivers import FirmwareDriver
+from .icons import IconStore
 from .live_app import AppConfig, LiveApp
 from .templates import (
     InvalidSimpleOptionsError,
@@ -99,10 +100,13 @@ def app_config_from_subentry(subentry: ConfigSubentry) -> AppConfig:
 class ClockManager:
     """Own the apps of one clock and the topics they share."""
 
-    def __init__(self, hass: HomeAssistant, driver: FirmwareDriver) -> None:
+    def __init__(
+        self, hass: HomeAssistant, driver: FirmwareDriver, icons: IconStore
+    ) -> None:
         """Initialize the manager."""
         self.hass = hass
         self.driver = driver
+        self.icons = icons
         # Keyed by config subentry id.
         self.apps: dict[str, LiveApp] = {}
         self._unsubscribers: list[Callable[[], None]] = []
@@ -265,6 +269,9 @@ class ClockManager:
             await app.async_republish()
 
     async def _publish(self, topic: str, payload: str) -> None:
+        # Icons from the LaMetric gallery are sent inline, nothing is stored
+        # on the clock.
+        payload = await self.icons.async_resolve(payload)
         try:
             await mqtt.async_publish(self.hass, topic, payload, qos=0, retain=False)
         except HomeAssistantError as err:
