@@ -12,6 +12,7 @@ import { translator } from "./i18n.js";
 import { MAX_STOPS, PRESETS, colorAt, cssGradient, formStops, presetCss, rgbToHex, suggestion } from "./gradients.js";
 
 const PREVIEW_DEBOUNCE = 350;
+const MAX_IMPORT_BYTES = 512 * 1024;
 const MIRROR_STALE_MS = 5000;
 
 const STARTER_APP_TEMPLATE = `{#- Render a JSON object (one page) or a list of objects
@@ -56,6 +57,8 @@ const ICON_PATHS = {
   prev: "M15 18l-6-6 6-6",
   next: "M9 6l6 6-6 6",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
+  download: "M12 4v11M7 10l5 5 5-5M5 20h14",
+  upload: "M12 16V5M7 10l5-5 5 5M5 20h14",
 };
 function icon(name) {
   const svg = document.createElementNS(SVG_NS, "svg");
@@ -190,6 +193,21 @@ pre { margin: 0; padding: 12px; border-radius: 8px; font-family: var(--ha-font-f
 .gradient-bar.empty { background: rgba(127,127,127,.15); }
 .gradient-marker { position: absolute; top: 0; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%;
   border: 3px solid var(--card-background-color, #fff); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.transfer { display: flex; flex-direction: column; gap: 14px; }
+.pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 16px; }
+.pick { align-items: center; }
+.export-output, .transfer textarea { font-family: var(--ha-font-family-code, "Roboto Mono", monospace); font-size: 13px; padding: 10px; border-radius: 8px; width: 100%;
+  border: 1px solid var(--divider-color, #c4c7cc); background: var(--card-background-color, #fff); color: inherit; resize: vertical; min-height: 120px; }
+.import-list { display: flex; flex-direction: column; gap: 10px; }
+.import-item { display: flex; flex-direction: column; gap: 10px; }
+.import-item.dim { opacity: .6; }
+.import-item .field { max-width: 360px; }
+.import-item input[type=text], .import-item select { font: inherit; font-size: 15px; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--divider-color, #c4c7cc); background: var(--card-background-color, #fff); color: inherit; }
+.warn { font-size: 13px; color: var(--warning-color, #b26a00); }
+.notice { color: var(--success-color, #2e7d32); }
+details summary { cursor: pointer; font-size: 13px; }
+details pre { margin-top: 8px; }
 @media (max-width: 600px) { .fields { grid-template-columns: minmax(0, 1fr); } dl { grid-template-columns: minmax(0, 1fr); } }
 `;
 
@@ -390,7 +408,10 @@ class AwtrixStudioPanel extends HTMLElement {
           this._navRow)),
       h("section", { class: "row between" },
         h("h2", {}, this.t("apps")),
-        h("button", { class: "btn primary", onClick: () => this._openEditor("app", null) }, icon("plus"), this.t("add_app"))),
+        h("div", { class: "row" },
+          h("button", { class: "btn", onClick: () => this._openImport() }, icon("upload"), this.t("import")),
+          h("button", { class: "btn", onClick: () => this._openExport() }, icon("download"), this.t("export")),
+          h("button", { class: "btn primary", onClick: () => this._openEditor("app", null) }, icon("plus"), this.t("add_app")))),
       this._grid,
       h("h2", {}, this.t("indicators")),
       this._indicatorRow,
@@ -544,6 +565,223 @@ class AwtrixStudioPanel extends HTMLElement {
     }
   }
 
+  // ------------------------------------------------------ export / import
+
+  _openPage(name, title) {
+    this._view = { name };
+    this._stop("screen");
+    this._stop("preview");
+    clearInterval(this._cycleTimer);
+    this._backButton.hidden = false;
+    this._clockSelect.hidden = true;
+    this._title.textContent = title;
+    clear(this._main);
+  }
+
+  _itemLabel(item) {
+    return item.kind === "app" ? item.data.app_name : this.t("indicator_n", { n: item.data.indicator });
+  }
+
+  _openExport(preselected) {
+    this._openPage("export", this.t("export_title"));
+    const items = [...this._items("app"), ...this._items("indicator")];
+    const selected = new Set(preselected || items.map((i) => i.subentry_id));
+    const feedback = h("div", { class: "feedback", role: "status" });
+    const output = h("textarea", { class: "export-output", readonly: true, rows: 10, spellcheck: "false", "aria-label": this.t("export_content") });
+    output.hidden = true;
+    const list = h("div", { class: "pick-list" });
+    const boxes = [];
+    items.forEach((item) => {
+      const box = h("input", { type: "checkbox", checked: selected.has(item.subentry_id),
+        onChange: (e) => { if (e.target.checked) selected.add(item.subentry_id); else selected.delete(item.subentry_id); } });
+      boxes.push([box, item]);
+      list.append(h("label", { class: "check pick" }, box,
+        h("span", { class: "name" }, this._itemLabel(item)),
+        h("span", { class: `chip ${item.data.mode}` }, this.t(item.data.mode))));
+    });
+    const setAll = (value) => boxes.forEach(([box, item]) => {
+      box.checked = value;
+      if (value) selected.add(item.subentry_id); else selected.delete(item.subentry_id);
+    });
+
+    const fetchDocument = async () => {
+      if (!selected.size) { feedback.textContent = this.t("export_none"); return null; }
+      const ids = items.filter((i) => selected.has(i.subentry_id)).map((i) => i.subentry_id);
+      const doc = await this._call({ type: "awtrix_studio/export", subentry_ids: ids });
+      if (!doc) return null;
+      const text = JSON.stringify(doc, null, 2);
+      output.value = text;
+      const single = ids.length === 1 ? this._itemLabel(items.find((i) => i.subentry_id === ids[0])) : this._snapshot?.prefix || "clock";
+      return { text, name: `awtrix-studio-${String(single).replace(/[^A-Za-z0-9_-]+/g, "_")}.json`, count: ids.length };
+    };
+    const download = async () => {
+      const result = await fetchDocument();
+      if (!result) return;
+      const url = URL.createObjectURL(new Blob([result.text], { type: "application/json" }));
+      const link = h("a", { href: url, download: result.name, hidden: true });
+      this.shadowRoot.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      feedback.textContent = this.t("export_downloaded", { n: result.count });
+    };
+    const copy = async () => {
+      const result = await fetchDocument();
+      if (!result) return;
+      try {
+        await navigator.clipboard.writeText(result.text);
+        feedback.textContent = this.t("export_copied", { n: result.count });
+      } catch (_err) {
+        // No clipboard access (insecure context, some apps): let the user copy.
+        output.hidden = false;
+        output.focus();
+        output.select();
+        feedback.textContent = this.t("export_copy_manual");
+      }
+    };
+
+    this._main.append(h("section", { class: "card pad transfer" },
+      h("h2", {}, this.t("export_title")),
+      h("div", { class: "muted" }, this.t("export_help")),
+      items.length ? h("div", { class: "row" },
+        h("button", { class: "btn small", onClick: () => setAll(true) }, this.t("select_all")),
+        h("button", { class: "btn small", onClick: () => setAll(false) }, this.t("select_none"))) : "",
+      items.length ? list : h("div", { class: "muted" }, this.t("export_empty")),
+      h("div", { class: "row" },
+        h("button", { class: "btn primary", onClick: download, disabled: !items.length }, icon("download"), this.t("export_download")),
+        h("button", { class: "btn", onClick: copy, disabled: !items.length }, this.t("export_copy")),
+        h("button", { class: "btn", onClick: () => this._showOverview() }, this.t("cancel"))),
+      feedback, output));
+  }
+
+  _openImport() {
+    this._openPage("import", this.t("import_title"));
+    this._import = { document: null, choices: null, plans: [] };
+    const fileInput = h("input", { type: "file", accept: ".json,application/json", id: "import-file",
+      onChange: async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (file.size > MAX_IMPORT_BYTES) { this._importError("too_big"); return; }
+        paste.value = await file.text();
+        this._analyze(paste.value);
+      } });
+    const paste = h("textarea", { id: "import-paste", rows: 6, spellcheck: "false", placeholder: this.t("import_paste_placeholder") });
+    this._importStatus = h("div", { class: "status", role: "status" });
+    this._importList = h("div", { class: "import-list" });
+    this._importButton = h("button", { class: "btn primary", onClick: () => this._runImport(), hidden: true }, this.t("import"));
+    this._main.append(
+      h("section", { class: "card pad transfer" },
+        h("h2", {}, this.t("import_title")),
+        h("div", { class: "muted" }, this.t("import_help")),
+        h("div", { class: "field" }, h("label", { for: "import-file" }, this.t("import_file")), fileInput),
+        h("div", { class: "field" }, h("label", { for: "import-paste" }, this.t("import_paste")), paste),
+        h("div", { class: "row" },
+          h("button", { class: "btn", onClick: () => this._analyze(paste.value) }, this.t("import_analyze")),
+          h("button", { class: "btn", onClick: () => this._showOverview() }, this.t("cancel"))),
+        this._importStatus),
+      this._importList,
+      h("div", { class: "row" }, this._importButton));
+  }
+
+  _importError(key) {
+    this._importStatus.textContent = this.t(`import_errors.${key}`);
+    this._importStatus.className = "status error";
+    clear(this._importList);
+    this._importButton.hidden = true;
+  }
+
+  async _analyze(text) {
+    if (!text || !text.trim()) { this._importError("empty"); return; }
+    if (text.length > MAX_IMPORT_BYTES) { this._importError("too_big"); return; }
+    let document;
+    try { document = JSON.parse(text); } catch (_err) { this._importError("not_json"); return; }
+    if (!document || typeof document !== "object" || Array.isArray(document)) { this._importError("not_an_export"); return; }
+    this._import = { document, choices: null, plans: [] };
+    await this._planImport();
+  }
+
+  async _planImport() {
+    const { document, choices } = this._import;
+    const message = { type: "awtrix_studio/import", document, dry_run: true };
+    if (choices) message.choices = choices;
+    const result = await this._call(message);
+    if (!result) return;
+    if (result.error) { this._importError(result.error); return; }
+    this._import.plans = result.items;
+    if (!choices) this._import.choices = result.items.map((p) => ({ action: p.error ? "skip" : p.action, target: p.target || "" }));
+    this._renderImportPlans();
+  }
+
+  _renderImportPlans() {
+    const { plans, choices } = this._import;
+    clear(this._importList);
+    plans.forEach((plan, index) => this._importList.append(this._importRow(plan, choices[index])));
+    const count = plans.filter((p) => p.action !== "skip" && !p.error).length;
+    this._importStatus.textContent = this.t("import_ready", { n: count, total: plans.length });
+    this._importStatus.className = "status ok";
+    this._importButton.hidden = false;
+    this._importButton.disabled = count === 0;
+    this._importButton.textContent = this.t("import_n", { n: count });
+  }
+
+  _importRow(plan, choice) {
+    const replan = () => {
+      clearTimeout(this._importTimer);
+      this._importTimer = setTimeout(() => this._planImport(), 300);
+    };
+    const invalid = plan.kind === null || (plan.error && !["app_name_exists", "indicator_in_use"].includes(plan.error));
+    const include = h("input", { type: "checkbox", checked: choice.action !== "skip", disabled: invalid,
+      "aria-label": this.t("import_include", { name: plan.name || "?" }),
+      onChange: (e) => { choice.action = e.target.checked ? "add" : "skip"; replan(); } });
+    const title = h("div", { class: "row" }, include,
+      h("span", { class: "name" }, plan.kind === "indicator" ? this.t("indicator_n", { n: plan.name }) : plan.name || "?"),
+      plan.mode ? h("span", { class: `chip ${plan.mode}` }, this.t(plan.mode)) : "",
+      plan.kind ? h("span", { class: "chip" }, this.t(plan.kind === "app" ? "kind_app" : "kind_indicator")) : "");
+    const row = h("div", { class: `card pad import-item${choice.action === "skip" ? " dim" : ""}` }, title);
+
+    if (!invalid && choice.action !== "skip") {
+      let target;
+      if (plan.kind === "app") {
+        target = h("input", { type: "text", value: choice.target, maxlength: 32, spellcheck: "false",
+          onInput: (e) => { choice.target = e.target.value; if (choice.action === "replace") choice.action = "add"; replan(); } });
+      } else {
+        target = h("select", { onChange: (e) => { choice.target = e.target.value; choice.action = "add"; replan(); } },
+          ...["1", "2", "3"].map((n) => h("option", { value: n }, this.t(`indicator_${n}`))));
+        target.value = choice.target;
+      }
+      row.append(h("div", { class: "field" }, h("label", {}, this.t(plan.kind === "app" ? "import_as" : "import_on")), target));
+      const taken = plan.error === "app_name_exists" || plan.error === "indicator_in_use" || choice.action === "replace";
+      if (taken) {
+        row.append(h("label", { class: "check" },
+          h("input", { type: "checkbox", checked: choice.action === "replace",
+            onChange: (e) => { choice.action = e.target.checked ? "replace" : "add"; replan(); } }),
+          h("span", {}, this.t(plan.kind === "app" ? "import_replace_app" : "import_replace_indicator"))));
+      }
+    }
+    if (plan.error && !(choice.action === "replace" && plan.replaces)) {
+      row.append(h("div", { class: "error-text" }, this.t(`errors.${plan.error}`) + (plan.detail ? ` ${plan.detail}` : "")));
+    }
+    if (plan.replaces && choice.action === "replace") row.append(h("div", { class: "muted" }, this.t("import_will_replace")));
+    if (plan.warnings.includes("other_firmware")) row.append(h("div", { class: "warn" }, this.t("import_other_firmware")));
+    if (plan.missing_entities.length) {
+      row.append(h("div", { class: "warn" }, this.t("import_missing", { list: plan.missing_entities.join(", ") })));
+    }
+    if (plan.template) {
+      row.append(h("details", {}, h("summary", {}, this.t("import_show_template")), h("pre", {}, plan.template)));
+    }
+    return row;
+  }
+
+  async _runImport() {
+    const { document, choices } = this._import;
+    this._importButton.disabled = true;
+    const result = await this._call({ type: "awtrix_studio/import", document, choices });
+    if (!result) { this._importButton.disabled = false; return; }
+    if (result.error) { this._importError(result.error); return; }
+    this._showOverview();
+    this._main.prepend(h("div", { class: "card pad notice", role: "status" }, this.t("import_done", { n: result.imported })));
+  }
+
   // --------------------------------------------------------------- editor
 
   _openEditor(kind, subentryId, presetIndicator) {
@@ -657,6 +895,7 @@ class AwtrixStudioPanel extends HTMLElement {
     const actions = h("div", { class: "row" },
       h("button", { class: "btn primary", onClick: () => this._save() }, this.t("save")),
       h("button", { class: "btn", onClick: () => this._showOverview() }, this.t("cancel")),
+      item ? h("button", { class: "btn", onClick: () => this._openExport([item.subentry_id]) }, icon("download"), this.t("export")) : null,
       item ? h("button", { class: "btn danger", onClick: () => this._delete() }, this.t("delete")) : null);
 
     // Preview column

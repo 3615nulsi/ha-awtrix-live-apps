@@ -77,6 +77,12 @@ Vous avez commencé en mode simple et voulez aller plus loin ? **Convertir en mo
 
 L'horloge a trois petits voyants colorés sur le bord droit de l'écran. Allumez-en un quand une porte est ouverte, affichez votre surplus solaire en couleur, signalez un nouveau courrier… En mode simple, c'est soit « allumé de cette couleur tant que cette entité est dans cet état », soit « toujours allumé, d'une couleur qui suit cette valeur », avec les mêmes dégradés que les apps. Clignotement ou fondu en option.
 
+### Partager et copier des apps
+
+**Exporter** enregistre les apps et indicateurs choisis dans un petit fichier JSON, ou les copie pour les coller dans un message de forum. **Importer** lit un tel fichier sur une autre horloge (ou un autre Home Assistant) et montre exactement ce qui va se passer avant de modifier quoi que ce soit : un nom déjà pris reçoit un nom libre ou peut remplacer l'app existante, les entités absentes de cette installation sont listées, et les modèles peuvent être lus avant d'être acceptés.
+
+Les apps simples décrivent *quoi* afficher, pas comment un firmware le dessine : elles passeront donc aussi sur de futurs firmwares comme AWTRIX NG. Les apps en mode modèle contiennent du JSON AWTRIX 3 et sont signalées si on les importe sur un autre firmware.
+
 ## 📝 Exemples de modèles
 
 <details>

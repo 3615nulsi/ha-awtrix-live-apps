@@ -52,6 +52,15 @@ from .templates import (
     build_app_template,
     build_indicator_template,
 )
+from .transfer import (
+    ACTION_ADD,
+    ACTION_REPLACE,
+    MAX_ITEMS,
+    InvalidDocumentError,
+    export_document,
+    parse_document,
+    plan_import,
+)
 from .validation import Invalid, normalize
 
 KIND = vol.In(MANAGED_SUBENTRY_TYPES)
@@ -81,6 +90,8 @@ def async_setup(hass: HomeAssistant) -> None:
         ws_show,
         ws_navigate,
         ws_republish,
+        ws_export,
+        ws_import,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -146,6 +157,25 @@ def _build_template(kind: str, data: dict[str, Any]) -> str:
     if kind == SUBENTRY_TYPE_INDICATOR:
         return build_indicator_template(data)
     return build_app_template(data)
+
+
+def _add_item(
+    hass: HomeAssistant, entry: ConfigEntry, kind: str, data: dict[str, Any]
+) -> ConfigSubentry:
+    """Store a new, validated app or indicator."""
+    if kind == SUBENTRY_TYPE_INDICATOR:
+        title = f"Indicator {data[CONF_INDICATOR]}"
+        unique_id = f"indicator:{data[CONF_INDICATOR]}"
+    else:
+        title = unique_id = data[CONF_APP_NAME]
+    subentry = ConfigSubentry(
+        data=MappingProxyType(data),
+        subentry_type=kind,
+        title=title,
+        unique_id=unique_id,
+    )
+    hass.config_entries.async_add_subentry(entry, subentry)
+    return subentry
 
 
 def _error(
@@ -395,20 +425,7 @@ def ws_save(
         connection.send_result(msg["id"], {"subentry_id": subentry_id})
         return
 
-    if kind == SUBENTRY_TYPE_INDICATOR:
-        title, unique_id = (
-            f"Indicator {data[CONF_INDICATOR]}",
-            f"indicator:{data[CONF_INDICATOR]}",
-        )
-    else:
-        title = unique_id = data[CONF_APP_NAME]
-    subentry = ConfigSubentry(
-        data=MappingProxyType(data),
-        subentry_type=kind,
-        title=title,
-        unique_id=unique_id,
-    )
-    hass.config_entries.async_add_subentry(entry, subentry)
+    subentry = _add_item(hass, entry, kind, data)
     connection.send_result(msg["id"], {"subentry_id": subentry.subentry_id})
 
 
@@ -582,3 +599,76 @@ async def ws_republish(
         return
     await manager.async_republish_all()
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "awtrix_studio/export",
+        vol.Required("entry_id"): ENTRY_ID,
+        vol.Optional("subentry_ids"): vol.All(
+            [SUBENTRY_ID], vol.Length(min=1, max=MAX_ITEMS)
+        ),
+    }
+)
+@websocket_api.require_admin
+@callback
+def ws_export(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Export apps and indicators to share them or copy them to another clock."""
+    entry = _entry(hass, msg["entry_id"])
+    if entry is None:
+        _error(connection, msg, websocket_api.ERR_NOT_FOUND, "Unknown clock")
+        return
+    connection.send_result(
+        msg["id"],
+        export_document(entry, entry.data[CONF_FIRMWARE], msg.get("subentry_ids")),
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "awtrix_studio/import",
+        vol.Required("entry_id"): ENTRY_ID,
+        vol.Required("document"): vol.All(dict, vol.Length(max=8)),
+        vol.Optional("choices"): vol.All(
+            [vol.All(dict, vol.Length(max=4))], vol.Length(max=MAX_ITEMS)
+        ),
+        vol.Optional("dry_run", default=False): bool,
+    }
+)
+@websocket_api.require_admin
+@callback
+def ws_import(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Check an export (dry run), then import the chosen items."""
+    entry = _entry(hass, msg["entry_id"])
+    if entry is None:
+        _error(connection, msg, websocket_api.ERR_NOT_FOUND, "Unknown clock")
+        return
+    try:
+        raw_items = parse_document(msg["document"])
+    except InvalidDocumentError as err:
+        connection.send_result(msg["id"], {"error": err.key, "items": []})
+        return
+    plans = plan_import(
+        hass, entry, entry.data[CONF_FIRMWARE], raw_items, msg.get("choices")
+    )
+    imported = 0
+    if not msg["dry_run"]:
+        for plan in plans:
+            if plan.data is None or plan.kind is None:
+                continue
+            if plan.action == ACTION_REPLACE and plan.replaces in entry.subentries:
+                hass.config_entries.async_update_subentry(
+                    entry, entry.subentries[plan.replaces], data=plan.data
+                )
+                imported += 1
+            elif plan.action == ACTION_ADD:
+                _add_item(hass, entry, plan.kind, plan.data)
+                imported += 1
+    connection.send_result(
+        msg["id"],
+        {"error": None, "imported": imported, "items": [p.as_dict() for p in plans]},
+    )

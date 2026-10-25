@@ -77,6 +77,12 @@ Started in simple mode and want to go further? **Convert to template mode** open
 
 The clock has three small colored lights on the right edge of its screen. Light one up while a door is open, show your solar surplus as a color, signal new mail… In simple mode, it's either "lit in this color while this entity is in this state", or "always lit, with a color that follows this value" using the same gradients as apps. Blink or fade are optional.
 
+### Share and copy apps
+
+**Export** saves the apps and indicators you pick to a small JSON file, or copies it so you can paste it in a forum post. **Import** reads such a file on another clock (or another Home Assistant) and shows you exactly what will happen before anything changes: names already taken get a free name or can replace the existing app, entities that don't exist on this installation are listed, and templates can be read before you accept them.
+
+Simple apps describe *what* to show, not how a firmware draws it, so they will also move to future firmware such as AWTRIX NG. Template apps contain AWTRIX 3 JSON and are flagged when imported on another firmware.
+
 ## 📝 Template examples
 
 <details>

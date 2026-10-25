@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.components import mqtt
@@ -24,6 +25,9 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SWITCH]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+# Latest pending reload per clock, to reload once after a burst of changes.
+_PENDING_RELOADS: dict[str, object] = {}
 
 type AwtrixStudioConfigEntry = ConfigEntry[ClockManager]
 
@@ -99,6 +103,14 @@ async def _async_update_listener(
         # so remove the app from the clock explicitly.
         await app.async_disable(remove=False)
         await app.async_remove_from_clock()
+    # Several changes in a row (an import) call this once each: only the last
+    # call reloads the clock.
+    token = object()
+    _PENDING_RELOADS[entry.entry_id] = token
+    await asyncio.sleep(0)
+    if _PENDING_RELOADS.get(entry.entry_id) is not token:
+        return
+    del _PENDING_RELOADS[entry.entry_id]
     await hass.config_entries.async_reload(entry.entry_id)
 
 
