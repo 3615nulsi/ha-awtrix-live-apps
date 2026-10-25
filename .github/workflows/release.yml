@@ -1,0 +1,39 @@
+name: Release
+
+# Publishes a GitHub release (used by HACS) when the version in manifest.json
+# changes on main. Can also be started by hand from the Actions tab.
+# Release notes come from .github/release-notes/v<version>.md when present,
+# otherwise they are generated from the commits.
+
+on:
+  push:
+    branches: [main]
+    paths: [custom_components/awtrix_studio/manifest.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the version
+        id: version
+        run: echo "tag=v$(jq -r .version custom_components/awtrix_studio/manifest.json)" >> "$GITHUB_OUTPUT"
+      - name: Create the release if it does not exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "$TAG is already released."
+            exit 0
+          fi
+          notes=".github/release-notes/$TAG.md"
+          if [ -f "$notes" ]; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file "$notes"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          fi
