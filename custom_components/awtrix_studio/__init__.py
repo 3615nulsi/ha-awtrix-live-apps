@@ -10,7 +10,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 
@@ -60,12 +64,35 @@ async def async_setup_entry(
             manager.add_app(subentry)
     await manager.async_start()
     entry.runtime_data = manager
+    _async_tidy_registries(hass, entry)
 
     # Apps are enabled by their switch, once its last state is restored.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     async_dispatcher_send(hass, websocket.signal_entry_loaded(entry.entry_id))
     return True
+
+
+@callback
+def _async_tidy_registries(hass: HomeAssistant, entry: AwtrixStudioConfigEntry) -> None:
+    """Keep the clock's single device and its switches on the main entry.
+
+    All switches share one device. Home Assistant ties a device to a single
+    config subentry, so the switches belong to the entry itself, not to the
+    app's subentry. Versions up to 0.6.0 attached them to their subentry, which
+    moved the device from one subentry to the next and dropped the switches of
+    the previous ones: move the device back and forget those switches.
+    """
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    if device is not None and getattr(device, "config_subentry_id", None) is not None:
+        dev_reg.async_update_device(device.id, new_config_subentry_id=None)
+
+    ent_reg = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        subentry_id = entity.unique_id.removesuffix("_enabled")
+        if entity.config_subentry_id is not None or subentry_id not in entry.subentries:
+            ent_reg.async_remove(entity.entity_id)
 
 
 async def async_unload_entry(

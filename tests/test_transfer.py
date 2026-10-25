@@ -7,6 +7,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigSubentryDataWithId
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.typing import (
@@ -178,6 +179,12 @@ async def test_import_to_another_clock(
     )
     assert result["imported"] == 3
     await hass.async_block_till_done()
+    # Every imported item gets its switch, on the clock's single device.
+    entities = er.async_entries_for_config_entry(er.async_get(hass), target.entry_id)
+    assert len(entities) == 3
+    assert {entity.config_subentry_id for entity in entities} == {None}
+    assert len({entity.device_id for entity in entities}) == 1
+    assert all(hass.states.get(e.entity_id).state == "on" for e in entities)
     imported = {s.title: dict(s.data) for s in target.subentries.values()}
     assert imported == {
         "demo": TEMPLATE_APP,
@@ -369,3 +376,38 @@ async def test_files_from_awtrix_studio_still_import(
     )
     assert result["error"] is None
     assert [p["target"] for p in result["items"]] == ["legacy"]
+
+
+async def test_switches_of_older_versions_are_repaired(
+    hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+) -> None:
+    """Switches attached to their subentry (up to 0.6.0) are recreated."""
+    hass.states.async_set("sensor.co2", "950")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=PREFIX,
+        unique_id=PREFIX,
+        data={"firmware": "awtrix3", "prefix": PREFIX},
+        subentries_data=[
+            _subentry(SIMPLE_APP, "app", "s_co2"),
+            _subentry(INDICATOR, "indicator", "s_ind1"),
+        ],
+    )
+    entry.add_to_hass(hass)
+    ent_reg = er.async_get(hass)
+    ent_reg.async_get_or_create(
+        "switch",
+        DOMAIN,
+        "s_co2_enabled",
+        config_entry=entry,
+        config_subentry_id="s_co2",
+    )
+    ent_reg.async_get_or_create(
+        "switch", DOMAIN, "gone_enabled", config_entry=entry, config_subentry_id=None
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entities = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+    assert sorted(e.unique_id for e in entities) == ["s_co2_enabled", "s_ind1_enabled"]
+    assert {e.config_subentry_id for e in entities} == {None}

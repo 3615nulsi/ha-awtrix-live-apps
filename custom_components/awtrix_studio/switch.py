@@ -25,15 +25,17 @@ async def async_setup_entry(
     entry: AwtrixStudioConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Add a switch for every app and indicator of the clock."""
+    """Add a switch for every app and indicator of the clock.
+
+    The switches share the clock's device, so they belong to the entry itself:
+    a device can only belong to one subentry.
+    """
     manager = entry.runtime_data
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type not in MANAGED_SUBENTRY_TYPES:
-            continue
-        async_add_entities(
-            [AppSwitch(entry, subentry, manager.apps[subentry.subentry_id])],
-            config_subentry_id=subentry.subentry_id,
-        )
+    async_add_entities(
+        AppSwitch(entry, subentry, manager.apps[subentry.subentry_id])
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type in MANAGED_SUBENTRY_TYPES
+    )
 
 
 class AppSwitch(SwitchEntity, RestoreEntity):
