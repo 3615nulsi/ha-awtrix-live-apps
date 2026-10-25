@@ -165,7 +165,7 @@ def build_app_template(options: Mapping[str, Any]) -> str:
         rounded = f"num | round({int(decimals)})"
         lines.append(f"{{%- set value = {rounded} if num is not none else raw -%}}")
 
-    text = "value"
+    text = "value | string"
     if label:
         text = f"{jinja_str(label + ' ')} ~ value"
     if show_unit:

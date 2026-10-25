@@ -65,6 +65,7 @@ async def test_co2_with_thresholds(hass: HomeAssistant) -> None:
         ("54", "%", {}, "54%"),
         ("0.42", "kW", {}, "0.42 kW"),
         ("0.42", "kW", {"show_unit": False}, "0.42"),
+        ("1.0", "µg/m³", {"show_unit": False, "decimals": 0}, "1"),
         ("12", "km", {"label": "Nico"}, "Nico 12 km"),
         ("idle", None, {}, "idle"),
         ("3.0", None, {"decimals": 0}, "3"),
