@@ -1,4 +1,4 @@
-"""Animated icons stored on the clock.
+"""Requests to the clock's web server: animated icons and the app loop.
 
 AWTRIX only animates icons stored in its own memory. For an animated icon of
 the LaMetric gallery, Awtrix Studio drops the GIF into the clock's /ICONS
@@ -9,6 +9,9 @@ The clock's address comes from its MQTT stats and is limited to private IPv4
 addresses. Files are only ever added, never deleted. When the clock cannot be
 reached (or its web page is password protected), the caller falls back to the
 icon's first image sent inline.
+
+The app loop order is also read and changed there: AWTRIX has no MQTT command
+to reorder apps.
 """
 
 from __future__ import annotations
@@ -123,3 +126,25 @@ class ClockFiles:
         ) as response:
             response.raise_for_status()
         _LOGGER.debug("Stored icon %s on the clock at %s", filename, self.address)
+
+    async def async_get_text(self, path: str) -> str:
+        """GET a path of the clock's web server and return the body."""
+        if self.address is None:
+            raise ValueError("address unknown")
+        session = async_get_clientsession(self.hass)
+        async with session.get(self._url(path), timeout=TIMEOUT) as response:
+            response.raise_for_status()
+            return await response.text()
+
+    async def async_post_json(self, path: str, body: object) -> None:
+        """POST a JSON body to a path of the clock's web server."""
+        if self.address is None:
+            raise ValueError("address unknown")
+        session = async_get_clientsession(self.hass)
+        async with session.post(
+            self._url(path),
+            data=json.dumps(body, ensure_ascii=False),
+            headers={"Content-Type": "application/json"},
+            timeout=TIMEOUT,
+        ) as response:
+            response.raise_for_status()

@@ -15,6 +15,9 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_mqtt_message,
     async_fire_time_changed,
 )
+from pytest_homeassistant_custom_component.test_util.aiohttp import (
+    AiohttpClientMocker,
+)
 from pytest_homeassistant_custom_component.typing import (
     MqttMockHAClient,
     WebSocketGenerator,
@@ -105,7 +108,7 @@ async def test_clocks_and_snapshot(
     assert (await client.receive_json())["success"]
     await tick(hass, freezer, 0.2)
     snapshot = (await client.receive_json())["event"]
-    assert snapshot["features"] == {"screen": True, "navigate": True}
+    assert snapshot["features"] == {"screen": True, "navigate": True, "order": True}
     [item] = snapshot["items"]
     assert item["subentry_id"] == "app_demo"
     assert item["enabled"] is True
@@ -445,3 +448,125 @@ async def test_save_gradients(
     assert json.loads(published(mqtt_mock, f"{PREFIX}/indicator1")[-1]) == {
         "color": [255, 128, 0]
     }
+
+
+async def test_display_options(
+    hass: HomeAssistant,
+    hass_ws_client: WebSocketGenerator,
+    entry: MockConfigEntry,
+    mqtt_mock: MqttMockHAClient,
+) -> None:
+    """Display options are validated, stored and added to every page."""
+    client = await hass_ws_client(hass)
+    data = {
+        "mode": "template",
+        "template": '[{"text": "a"}, {"text": "b", "duration": 3}]',
+        "display": {"duration": 10, "effect": "Plasma", "evil": 1},
+    }
+
+    await client.send_json_auto_id(
+        {
+            "type": "awtrix_studio/preview",
+            "entry_id": entry.entry_id,
+            "kind": "app",
+            "data": data,
+        }
+    )
+    assert (await client.receive_json())["success"]
+    event = (await client.receive_json())["event"]
+    assert event["pages"] == [
+        {"duration": 10, "effect": "Plasma", "text": "a"},
+        {"duration": 3, "effect": "Plasma", "text": "b"},
+    ]
+
+    async def save(display: dict[str, Any]) -> dict[str, Any]:
+        await client.send_json_auto_id(
+            {
+                "type": "awtrix_studio/save",
+                "entry_id": entry.entry_id,
+                "kind": "app",
+                "subentry_id": "app_demo",
+                "data": {**data, "display": display},
+            }
+        )
+        response = await client.receive_json()
+        assert response["success"], response
+        return response["result"]
+
+    assert (await save({"overlay": "lava"}))["errors"] == {
+        "display.overlay": "invalid_value"
+    }
+    await save(data["display"])
+    await hass.async_block_till_done()
+    assert entry.subentries["app_demo"].data["display"] == {
+        "duration": 10,
+        "effect": "Plasma",
+    }
+    assert json.loads(published(mqtt_mock, f"{PREFIX}/custom/demo")[-1]) == {
+        "duration": 10,
+        "effect": "Plasma",
+        "text": "a",
+    }
+
+    # Nothing set: nothing stored.
+    await save({"duration": ""})
+    await hass.async_block_till_done()
+    assert "display" not in entry.subentries["app_demo"].data
+
+
+async def test_loop_order(
+    hass: HomeAssistant,
+    hass_ws_client: WebSocketGenerator,
+    entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The chosen order is stored without reloading and applied over HTTP."""
+    clock = "http://192.168.1.161"
+    aioclient_mock.get(f"{clock}/api/loop", json={"Time": 0, "Date": 1, "demo": 2})
+    aioclient_mock.post(f"{clock}/api/reorder", status=200)
+    manager = entry.runtime_data
+    client = await hass_ws_client(hass)
+
+    # The clock's address is not known yet.
+    await client.send_json_auto_id(
+        {"type": "awtrix_studio/loop", "entry_id": entry.entry_id}
+    )
+    assert (await client.receive_json())["result"] == {"loop": None}
+
+    async_fire_mqtt_message(
+        hass,
+        f"{PREFIX}/stats",
+        json.dumps({"uptime": 5, "ip_address": "192.168.1.161"}),
+    )
+    await hass.async_block_till_done()
+    await client.send_json_auto_id(
+        {"type": "awtrix_studio/loop", "entry_id": entry.entry_id}
+    )
+    assert (await client.receive_json())["result"] == {"loop": ["Time", "Date", "demo"]}
+    assert not [c for c in aioclient_mock.mock_calls if c[0].upper() == "POST"]
+
+    await client.send_json_auto_id(
+        {
+            "type": "awtrix_studio/order",
+            "entry_id": entry.entry_id,
+            "order": ["demo", "Time", "demo"],
+        }
+    )
+    assert (await client.receive_json())["result"] == {"order": ["demo", "Time"]}
+    await tick(hass, freezer, 0.1)
+    assert entry.options["app_order"] == ["demo", "Time"]
+    assert entry.runtime_data is manager
+    [reorder] = [c for c in aioclient_mock.mock_calls if c[0].upper() == "POST"]
+    assert str(reorder[1]) == f"{clock}/api/reorder"
+    # Every app of the loop is named, or the clock would drop it.
+    assert json.loads(reorder[2]) == ["demo", "Time", "Date"]
+    assert manager.loop == ["demo", "Time", "Date"]
+
+    # The clock lost its apps and put them back at the end: the order is
+    # restored a moment later.
+    await manager.async_republish_all()
+    await tick(hass, freezer, 1)
+    assert len([c for c in aioclient_mock.mock_calls if c[0].upper() == "POST"]) == 1
+    await tick(hass, freezer, 1.5)
+    assert len([c for c in aioclient_mock.mock_calls if c[0].upper() == "POST"]) == 2

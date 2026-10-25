@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 import logging
+from typing import Any
 
+import aiohttp
 from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -30,9 +33,11 @@ from .const import (
     SUBENTRY_TYPE_APP,
     SUBENTRY_TYPE_INDICATOR,
 )
+from .display import CONF_DISPLAY
 from .drivers import FirmwareDriver
 from .icons import IconStore
 from .live_app import AppConfig, LiveApp
+from .loop import clean_order, desired_loop, parse_loop
 from .templates import (
     InvalidSimpleOptionsError,
     build_app_template,
@@ -46,6 +51,12 @@ MANAGED_SUBENTRY_TYPES = (SUBENTRY_TYPE_APP, SUBENTRY_TYPE_INDICATOR)
 SCREEN_REFRESH = timedelta(seconds=1)
 # How long a "test on the clock" stays before the real content comes back.
 TEST_DURATION = 15.0
+# How long after an app (re)appears the loop order is checked: AWTRIX puts it
+# at the end of the loop.
+ORDER_CHECK_DELAY = 2.0
+# How often the loop order is checked while one is set, for apps pushed by
+# something else.
+ORDER_CHECK_INTERVAL = timedelta(seconds=60)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +106,7 @@ def app_config_from_subentry(subentry: ConfigSubentry) -> AppConfig:
         hide_when_empty=simple
         or bool(data.get(CONF_HIDE_WHEN_EMPTY, DEFAULT_HIDE_WHEN_EMPTY)),
         lifetime=int(data.get(CONF_LIFETIME, DEFAULT_LIFETIME)),
+        display=dict(data.get(CONF_DISPLAY) or {}),
     )
 
 
@@ -118,6 +130,14 @@ class ClockManager:
         self._screen_listeners: list[Callable[[list[int]], None]] = []
         self._screen_unsubscribers: list[Callable[[], None]] = []
         self._test_timers: dict[str, CALLBACK_TYPE] = {}
+        # What each app was built from, to tell an order change from an edit.
+        self._sources: dict[str, tuple[str, dict[str, Any]]] = {}
+        self._app_topics: set[str] = set()
+        self._shown_topics: set[str] = set()
+        self._order: list[str] = []
+        self._loop: list[str] | None = None
+        self._order_timer: CALLBACK_TYPE | None = None
+        self._order_lock = asyncio.Lock()
 
     @property
     def current_app(self) -> str | None:
@@ -146,6 +166,25 @@ class ClockManager:
         """Return the clock's MQTT prefix."""
         return self.driver.prefix
 
+    @property
+    def order(self) -> list[str]:
+        """Return the app loop order chosen by the user (may be empty)."""
+        return list(self._order)
+
+    @property
+    def loop(self) -> list[str] | None:
+        """Return the app loop as last read from the clock, if known."""
+        return list(self._loop) if self._loop is not None else None
+
+    def built_from(self, subentries: Iterable[ConfigSubentry]) -> bool:
+        """Return True if the apps were built from exactly these subentries."""
+        current = {
+            subentry.subentry_id: (subentry.subentry_type, dict(subentry.data))
+            for subentry in subentries
+            if subentry.subentry_type in MANAGED_SUBENTRY_TYPES
+        }
+        return current == self._sources
+
     @callback
     def add_app(self, subentry: ConfigSubentry) -> LiveApp:
         """Create the live app or indicator for a subentry (not enabled yet)."""
@@ -159,6 +198,12 @@ class ClockManager:
         app.async_set_on_screen(app.name == self._current_app)
         app.async_add_listener(self._notify)
         self.apps[subentry.subentry_id] = app
+        self._sources[subentry.subentry_id] = (
+            subentry.subentry_type,
+            dict(subentry.data),
+        )
+        if subentry.subentry_type == SUBENTRY_TYPE_APP:
+            self._app_topics.add(subentry_topic(self.driver, subentry))
         return app
 
     async def async_start(self) -> None:
@@ -174,6 +219,14 @@ class ClockManager:
         self._unsubscribers.append(
             mqtt.async_subscribe_connection_status(self.hass, self._on_connection)
         )
+        self._unsubscribers.append(
+            async_track_time_interval(
+                self.hass,
+                self._async_periodic_order,
+                ORDER_CHECK_INTERVAL,
+                name=f"awtrix_studio order {self.prefix}",
+            )
+        )
 
     async def async_stop(self) -> None:
         """Stop all apps without touching the clock."""
@@ -184,6 +237,9 @@ class ClockManager:
         for cancel in self._test_timers.values():
             cancel()
         self._test_timers.clear()
+        if self._order_timer is not None:
+            self._order_timer()
+            self._order_timer = None
         for app in self.apps.values():
             await app.async_shutdown()
 
@@ -267,6 +323,8 @@ class ClockManager:
 
     async def async_republish_all(self) -> None:
         """Publish every enabled app again."""
+        # The clock may have lost its apps: they all count as new.
+        self._shown_topics.clear()
         for app in self.apps.values():
             await app.async_republish()
 
@@ -278,6 +336,73 @@ class ClockManager:
             await mqtt.async_publish(self.hass, topic, payload, qos=0, retain=False)
         except HomeAssistantError as err:
             _LOGGER.debug("Could not publish to %s: %s", topic, err)
+            return
+        if topic not in self._app_topics:
+            return
+        if payload == self.driver.remove_payload:
+            self._shown_topics.discard(topic)
+        elif topic not in self._shown_topics:
+            # The clock added the app at the end of its loop.
+            self._shown_topics.add(topic)
+            self._schedule_order_check()
+
+    # ------------------------------------------------------------ loop order
+
+    @callback
+    def set_order(self, order: Any) -> None:
+        """Use a new loop order and apply it soon."""
+        self._order = clean_order(order)
+        self._schedule_order_check(0)
+
+    @callback
+    def _schedule_order_check(self, delay: float = ORDER_CHECK_DELAY) -> None:
+        if not self._order or self.driver.reorder_path is None:
+            return
+        if self._order_timer is not None:
+            self._order_timer()
+        self._order_timer = async_call_later(self.hass, delay, self._async_order_timer)
+
+    async def _async_order_timer(self, _now: datetime) -> None:
+        self._order_timer = None
+        await self.async_apply_order()
+
+    async def _async_periodic_order(self, _now: datetime) -> None:
+        await self.async_apply_order()
+
+    async def async_refresh_loop(self) -> list[str] | None:
+        """Read the app loop from the clock; None if it cannot be reached."""
+        path = self.driver.loop_path
+        if path is None or self.files.address is None:
+            return None
+        try:
+            loop = parse_loop(await self.files.async_get_text(path))
+        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+            _LOGGER.debug("Cannot read the app loop of %s: %s", self.prefix, err)
+            return None
+        if loop != self._loop:
+            self._loop = loop
+            self._notify()
+        return loop
+
+    async def async_apply_order(self) -> None:
+        """Rearrange the clock's loop to follow the chosen order, if needed."""
+        path = self.driver.reorder_path
+        if not self._order or path is None:
+            return
+        async with self._order_lock:
+            current = await self.async_refresh_loop()
+            if not current:
+                return
+            wanted = desired_loop(current, self._order)
+            if wanted == current:
+                return
+            try:
+                await self.files.async_post_json(path, wanted)
+            except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+                _LOGGER.debug("Cannot reorder the apps of %s: %s", self.prefix, err)
+                return
+            self._loop = wanted
+            self._notify()
 
     @callback
     def _on_current_app(self, msg: mqtt.ReceiveMessage) -> None:
@@ -300,7 +425,8 @@ class ClockManager:
         payload = str(payload)
         address = self.driver.parse_address(payload)
         if address is not None and self.files.set_address(address):
-            # Animated icons can now be stored on the clock.
+            # Animated icons can now be stored on the clock, and the loop
+            # order checked.
             self.hass.async_create_task(
                 self.async_republish_all(), f"awtrix_studio republish {self.prefix}"
             )

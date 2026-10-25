@@ -19,7 +19,14 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 
 from . import websocket
-from .const import CONF_FIRMWARE, CONF_PREFIX, DATA_ICONS, DOMAIN, SERVICE_REFRESH
+from .const import (
+    CONF_APP_ORDER,
+    CONF_FIRMWARE,
+    CONF_PREFIX,
+    DATA_ICONS,
+    DOMAIN,
+    SERVICE_REFRESH,
+)
 from .drivers import get_driver
 from .icons import IconStore
 from .manager import MANAGED_SUBENTRY_TYPES, ClockManager, subentry_topic
@@ -69,6 +76,7 @@ async def async_setup_entry(
         if subentry.subentry_type in MANAGED_SUBENTRY_TYPES:
             manager.add_app(subentry)
     await manager.async_start()
+    manager.set_order(entry.options.get(CONF_APP_ORDER))
     entry.runtime_data = manager
     _async_tidy_registries(hass, entry)
 
@@ -128,8 +136,16 @@ async def async_remove_entry(
 async def _async_update_listener(
     hass: HomeAssistant, entry: AwtrixStudioConfigEntry
 ) -> None:
-    """Apply app additions, edits and deletions."""
+    """Apply app additions, edits and deletions, or a new loop order."""
     manager = entry.runtime_data
+    if (
+        manager.prefix == entry.data[CONF_PREFIX]
+        and manager.driver.firmware == entry.data[CONF_FIRMWARE]
+        and manager.built_from(entry.subentries.values())
+    ):
+        # Only the clock's options changed: no need to reload the apps.
+        manager.set_order(entry.options.get(CONF_APP_ORDER))
+        return
     for subentry_id in _removed_app_ids(manager, entry):
         app = manager.apps[subentry_id]
         # The app's switch may already be gone (and the app stopped) by now,

@@ -10,8 +10,8 @@ often it updates.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
 from typing import Any
@@ -30,6 +30,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.template import Template
 
 from .const import DATA_CHANGE_COOLDOWN
+from .display import apply_display
 from .drivers import FirmwareDriver
 from .pages import InvalidPagesError, parse_pages, serialize_page
 
@@ -52,6 +53,8 @@ class AppConfig:
     hide_when_empty: bool
     lifetime: int
     single_page: bool = False
+    # Display options, added to every page unless the page sets them.
+    display: Mapping[str, Any] = field(default_factory=dict)
 
 
 class LiveApp:
@@ -255,6 +258,7 @@ class LiveApp:
 
         if self.config.single_page:
             pages = pages[:1]
+        pages = apply_display(pages, self.config.display)
         if self.config.lifetime > 0:
             pages = [self.driver.with_lifetime(p, self.config.lifetime) for p in pages]
         self._pages = [serialize_page(p) for p in pages]

@@ -35,6 +35,7 @@ from homeassistant.helpers.template import Template
 from .const import (
     APP_NAME_PATTERN,
     CONF_APP_NAME,
+    CONF_APP_ORDER,
     CONF_FIRMWARE,
     CONF_INDICATOR,
     CONF_MODE,
@@ -46,7 +47,9 @@ from .const import (
     SUBENTRY_TYPE_APP,
     SUBENTRY_TYPE_INDICATOR,
 )
+from .display import CONF_DISPLAY, apply_display
 from .icons import IconError, IconStore
+from .loop import MAX_APP_NAME, MAX_LOOP, clean_order
 from .manager import MANAGED_SUBENTRY_TYPES, ClockManager
 from .pages import InvalidPagesError, parse_pages, serialize_page
 from .templates import (
@@ -68,7 +71,7 @@ from .validation import Invalid, normalize
 KIND = vol.In(MANAGED_SUBENTRY_TYPES)
 ENTRY_ID = vol.All(str, vol.Length(min=1, max=64))
 SUBENTRY_ID = vol.All(str, vol.Length(min=1, max=64))
-DATA = vol.All(dict, vol.Length(max=40))
+DATA = vol.All(dict, vol.Length(max=48))
 SNAPSHOT_COALESCE = 0.1
 
 
@@ -92,6 +95,8 @@ def async_setup(hass: HomeAssistant) -> None:
         ws_show,
         ws_navigate,
         ws_republish,
+        ws_loop,
+        ws_order,
         ws_export,
         ws_import,
         ws_icon_search,
@@ -147,9 +152,12 @@ def _snapshot(entry: ConfigEntry, manager: ClockManager | None) -> dict[str, Any
         "firmware": entry.data[CONF_FIRMWARE],
         "loaded": manager is not None,
         "current_app": manager.current_app if manager else None,
+        "order": clean_order(entry.options.get(CONF_APP_ORDER)),
+        "loop": manager.loop if manager else None,
         "features": {
             "screen": bool(driver and driver.screen_topic),
             "navigate": bool(driver and driver.navigate(True)),
+            "order": bool(driver and driver.reorder_path),
         },
         "items": items,
     }
@@ -379,6 +387,8 @@ def ws_preview(
             return
         if kind == SUBENTRY_TYPE_INDICATOR:
             pages = pages[:1]
+        else:
+            pages = apply_display(pages, data.get(CONF_DISPLAY))
         send({"pages": pages, "error": None, "template": generated})
 
     tracker = async_track_template_result(
@@ -512,6 +522,7 @@ async def ws_test(
     try:
         data = normalize(hass, entry, kind, msg["data"], subentry_id)
         pages = parse_pages(Template(_build_template(kind, data), hass).async_render())
+        pages = apply_display(pages, data.get(CONF_DISPLAY))
     except Invalid as err:
         connection.send_result(
             msg["id"], {"errors": {err.field: err.key}, "detail": err.detail}
@@ -603,6 +614,53 @@ async def ws_republish(
         return
     await manager.async_republish_all()
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "awtrix_studio/loop",
+        vol.Required("entry_id"): ENTRY_ID,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_loop(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Read the clock's app loop again (None when the clock cannot be reached)."""
+    entry = _entry(hass, msg["entry_id"])
+    manager = _manager(entry) if entry else None
+    if entry is None or manager is None:
+        _error(connection, msg, websocket_api.ERR_NOT_FOUND, "Unknown clock")
+        return
+    connection.send_result(msg["id"], {"loop": await manager.async_refresh_loop()})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "awtrix_studio/order",
+        vol.Required("entry_id"): ENTRY_ID,
+        vol.Required("order"): vol.All(
+            [vol.All(str, vol.Length(min=1, max=MAX_APP_NAME))],
+            vol.Length(max=MAX_LOOP),
+        ),
+    }
+)
+@websocket_api.require_admin
+@callback
+def ws_order(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Store the order of the app loop; the clock follows it from then on."""
+    entry = _entry(hass, msg["entry_id"])
+    if entry is None:
+        _error(connection, msg, websocket_api.ERR_NOT_FOUND, "Unknown clock")
+        return
+    order = clean_order(msg["order"])
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_APP_ORDER: order}
+    )
+    connection.send_result(msg["id"], {"order": order})
 
 
 @websocket_api.websocket_command(
