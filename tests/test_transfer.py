@@ -347,3 +347,25 @@ async def test_missing_entities_are_reported(
         ["sensor.gone"],
     ]
     assert [p["warnings"] for p in result["items"]] == [[], []]
+
+
+async def test_files_from_awtrix_studio_still_import(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator, source: MockConfigEntry
+) -> None:
+    """Exports made before the rename keep working."""
+    client = await hass_ws_client(hass)
+    doc = {
+        "awtrix_studio": 1,
+        "items": [{**SIMPLE_APP, "type": "app", "app_name": "legacy"}],
+    }
+    result = await _ws(
+        client,
+        {
+            "type": "awtrix_studio/import",
+            "entry_id": source.entry_id,
+            "document": doc,
+            "dry_run": True,
+        },
+    )
+    assert result["error"] is None
+    assert [p["target"] for p in result["items"]] == ["legacy"]

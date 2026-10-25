@@ -4,7 +4,6 @@
 
 **Affichez tout ce que vous voulez de Home Assistant sur votre horloge AWTRIX, et laissez-la se mettre à jour toute seule.**
 Sans automatisation, sans blueprint, sans YAML.
-
 [![Ouvrir dans HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=3615nulsi&repository=ha-awtrix-studio&category=integration)
 
 [![Validate](https://github.com/3615nulsi/ha-awtrix-studio/actions/workflows/validate.yml/badge.svg)](https://github.com/3615nulsi/ha-awtrix-studio/actions/workflows/validate.yml)
