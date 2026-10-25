@@ -11,6 +11,8 @@ DATA_ICONS: Final = f"{DOMAIN}_icons"
 # Clock (config entry) settings
 CONF_FIRMWARE: Final = "firmware"
 CONF_PREFIX: Final = "prefix"
+# Clock options: the order of the app loop, as a list of app names.
+CONF_APP_ORDER: Final = "app_order"
 
 FIRMWARE_AWTRIX3: Final = "awtrix3"
 DEFAULT_PREFIX: Final = "awtrix"

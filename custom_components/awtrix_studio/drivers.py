@@ -99,6 +99,18 @@ class FirmwareDriver(ABC):
         """Return the (topic, payload) moving to the next or previous app."""
         return None
 
+    # App loop order, read and changed over HTTP on the clock's web server.
+
+    @property
+    def loop_path(self) -> str | None:
+        """Return the HTTP path listing the apps of the loop, in order."""
+        return None
+
+    @property
+    def reorder_path(self) -> str | None:
+        """Return the HTTP path taking the loop's new order (a list of names)."""
+        return None
+
 
 class Awtrix3Driver(FirmwareDriver):
     """AWTRIX 3 (https://blueforcer.github.io/awtrix3/)."""
@@ -205,6 +217,16 @@ class Awtrix3Driver(FirmwareDriver):
     def navigate(self, forward: bool) -> tuple[str, str]:
         """`nextapp` and `previousapp` move through the rotation."""
         return f"{self.prefix}/{'nextapp' if forward else 'previousapp'}", ""
+
+    @property
+    def loop_path(self) -> str:
+        """An object mapping each app name to its position."""
+        return "/api/loop"
+
+    @property
+    def reorder_path(self) -> str:
+        """Only available over HTTP; apps left out leave the loop."""
+        return "/api/reorder"
 
 
 DRIVERS: dict[str, type[FirmwareDriver]] = {

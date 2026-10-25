@@ -221,6 +221,40 @@ async def test_subentry_reconfigure_keeps_name(
     assert published(mqtt_mock)[-1] == '{"text":"edited"}'
 
 
+async def test_subentry_reconfigure_keeps_display_options(
+    hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+) -> None:
+    """Display options are edited in the panel and survive the HA form."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=PREFIX,
+        unique_id=PREFIX,
+        data={"firmware": "awtrix3", "prefix": PREFIX},
+        subentries_data=[
+            ConfigSubentryDataWithId(
+                data={**APP_DATA, "mode": "template", "display": {"duration": 12}},
+                subentry_id="app_demo",
+                subentry_type="app",
+                title="demo",
+                unique_id="demo",
+            )
+        ],
+    )
+    await setup_entry(hass, entry)
+    assert json.loads(published(mqtt_mock)[-1]) == {"duration": 12, "text": "a"}
+
+    result = await entry.start_subentry_reconfigure_flow(hass, "app_demo")
+    new_data = {k: v for k, v in APP_DATA.items() if k != "app_name"}
+    new_data["template"] = '{"text": "edited"}'
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], new_data
+    )
+    assert result["reason"] == "reconfigure_successful"
+    await hass.async_block_till_done()
+    assert entry.subentries["app_demo"].data["display"] == {"duration": 12}
+    assert json.loads(published(mqtt_mock)[-1]) == {"duration": 12, "text": "edited"}
+
+
 # ------------------------------------------------------------------- runtime
 
 

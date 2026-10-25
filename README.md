@@ -75,6 +75,16 @@ For anything more creative (drawings, progress bars, several pages), write a Hom
 
 Started in simple mode and want to go further? **Convert to template mode** opens the generated template, ready to be extended.
 
+### Display options
+
+Every app, in either mode, has a **Display** section for the rest of the AWTRIX app settings: how long it stays on screen, how many times a long text scrolls, scroll speed, what the icon does while the text scrolls, capitals, centering, text at the top, a rainbow or two-color gradient text, blinking or fading text, a background color, one of the clock's 19 background effects (with its speed, palette and blending), a weather overlay (snow, rain, storm…), and whether the clock keeps the app after it restarts. Leave a setting alone and the clock's own setting applies. In template mode they are defaults: a key your template sets itself wins.
+
+### Order of the apps
+
+**Order** lists the whole loop of the clock, its built-in apps (time, date, temperature…) and apps pushed by anything else included. Drag the apps or use the arrows, then save. The clock follows this order from then on: when an app comes back after being hidden, it goes back to its place instead of the end of the loop.
+
+AWTRIX can only reorder apps through its web page, so this uses the address the clock reports over MQTT, like animated icons. If the web page cannot be reached (or is password protected), the order is kept and applied as soon as it can be.
+
 ### Indicators
 
 The clock has three small colored lights on the right edge of its screen. Light one up while a door is open, show your solar surplus as a color, signal new mail… In simple mode, it's either "lit in this color while this entity is in this state", or "always lit, with a color that follows this value" using the same gradients as apps. Blink or fade are optional.
@@ -173,7 +183,7 @@ You can, and that's how most people do it today. But an automation that refreshe
 <details>
 <summary><b>Is the preview exactly what the clock shows?</b></summary>
 
-The simulated preview is close but simplified (font, scrolling, effects). For the exact result, switch to the **Real screen** tab, or use **Send to the clock to test**.
+The simulated preview is close but simplified (font, scrolling; background effects and weather overlays are only named). For the exact result, switch to the **Real screen** tab, or use **Send to the clock to test**.
 </details>
 
 <details>

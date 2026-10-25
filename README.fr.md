@@ -75,6 +75,16 @@ Pour aller plus loin (dessins, barres de progression, plusieurs pages), écrivez
 
 Vous avez commencé en mode simple et voulez aller plus loin ? **Convertir en mode modèle** ouvre le modèle généré, prêt à être enrichi.
 
+### Les options d'affichage
+
+Chaque app, dans les deux modes, a une section **Affichage** pour le reste des réglages d'une app AWTRIX : durée d'affichage, nombre de défilements d'un texte long, vitesse de défilement, comportement de l'icône pendant le défilement, majuscules, centrage, texte en haut, texte arc-en-ciel ou en dégradé de deux couleurs, texte clignotant ou en fondu, couleur de fond, l'un des 19 effets de fond de l'horloge (avec sa vitesse, sa palette et le fondu des couleurs), une météo par-dessus (neige, pluie, orage…), et la conservation de l'app par l'horloge après un redémarrage. Un réglage laissé tel quel suit celui de l'horloge. En mode modèle, ce sont des valeurs par défaut : une clé fixée par votre modèle reste prioritaire.
+
+### L'ordre des apps
+
+**Ordre** liste toute la boucle de l'horloge, y compris ses apps natives (heure, date, température…) et celles envoyées par d'autres outils. Faites glisser les apps ou utilisez les flèches, puis enregistrez. L'horloge suit ensuite cet ordre : une app qui revient après avoir été masquée reprend sa place au lieu de finir en bout de boucle.
+
+AWTRIX ne permet de réordonner les apps que par sa page web : Awtrix Studio utilise donc l'adresse que l'horloge annonce en MQTT, comme pour les icônes animées. Si la page web n'est pas joignable (ou protégée par mot de passe), l'ordre est conservé et appliqué dès que possible.
+
 ### Les indicateurs
 
 L'horloge a trois petits voyants colorés sur le bord droit de l'écran. Allumez-en un quand une porte est ouverte, affichez votre surplus solaire en couleur, signalez un nouveau courrier… En mode simple, c'est soit « allumé de cette couleur tant que cette entité est dans cet état », soit « toujours allumé, d'une couleur qui suit cette valeur », avec les mêmes dégradés que les apps. Clignotement ou fondu en option.
@@ -173,7 +183,7 @@ C'est possible, et c'est ce que font la plupart des gens aujourd'hui. Mais une a
 <details>
 <summary><b>L'aperçu est-il exactement ce qu'affiche l'horloge ?</b></summary>
 
-L'aperçu simulé est proche mais simplifié (police, défilement, effets). Pour le rendu exact, passez sur l'onglet **Écran réel**, ou utilisez **Envoyer à l'horloge pour tester**.
+L'aperçu simulé est proche mais simplifié (police, défilement ; les effets de fond et la météo sont seulement nommés). Pour le rendu exact, passez sur l'onglet **Écran réel**, ou utilisez **Envoyer à l'horloge pour tester**.
 </details>
 
 <details>

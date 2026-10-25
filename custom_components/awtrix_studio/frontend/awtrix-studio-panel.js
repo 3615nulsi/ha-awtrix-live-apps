@@ -17,6 +17,13 @@ const LAMETRIC_THUMB = "https://developer.lametric.com/content/apps/icon_thumbs/
 const ICON_SEARCH_DEBOUNCE = 400;
 const MIRROR_STALE_MS = 5000;
 
+// AWTRIX 3 background effects, palettes and weather overlays.
+const EFFECTS = ["BrickBreaker", "Checkerboard", "ColorWaves", "Fade", "Fireworks", "LookingEyes", "Matrix", "MovingLine", "Pacifica",
+  "PingPong", "Plasma", "PlasmaCloud", "Radar", "Ripple", "Snake", "SwirlIn", "SwirlOut", "TheaterChase", "TwinklingStars"];
+const PALETTES = ["Cloud", "Lava", "Ocean", "Forest", "Stripe", "Party", "Heat", "Rainbow"];
+const OVERLAYS = ["clear", "snow", "rain", "drizzle", "storm", "thunder", "frost"];
+const BUILTIN_APPS = ["Time", "Date", "Temperature", "Humidity", "Battery"];
+
 const STARTER_APP_TEMPLATE = `{#- Render a JSON object (one page) or a list of objects
     (pages that alternate). Any key of the AWTRIX custom app API works. -#}
 {{ [
@@ -63,6 +70,9 @@ const ICON_PATHS = {
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4",
   close: "M6 6l12 12M18 6L6 18",
   upload: "M12 16V5M7 10l5-5 5 5M5 20h14",
+  up: "M6 15l6-6 6 6",
+  down: "M6 9l6 6 6-6",
+  reorder: "M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3",
 };
 function icon(name) {
   const svg = document.createElementNS(SVG_NS, "svg");
@@ -87,6 +97,25 @@ function numberOrEmpty(value) {
   if (value === "" || value === null || value === undefined) return "";
   const n = Number(value);
   return Number.isFinite(n) ? n : "";
+}
+
+/** The loop as it will look: like `desired_loop` on the server, plus hidden Studio apps. */
+function arrangedLoop(loop, order, studio) {
+  const current = loop || [];
+  const known = new Set([...current, ...studio]);
+  const result = order.filter((name) => known.has(name));
+  const placed = new Set(result);
+  current.forEach((name, index) => {
+    if (placed.has(name)) return;
+    let position = 0;
+    for (let i = index - 1; i >= 0; i--) {
+      if (placed.has(current[i])) { position = result.indexOf(current[i]) + 1; break; }
+    }
+    result.splice(position, 0, name);
+    placed.add(name);
+  });
+  studio.filter((name) => !placed.has(name)).sort().forEach((name) => result.push(name));
+  return result;
 }
 
 function unsubscribe(promise) {
@@ -227,6 +256,19 @@ details pre { margin-top: 8px; }
 .picker-item img { width: 32px; height: 32px; image-rendering: pixelated; background: #0b0b0d; border-radius: 4px; }
 .picker-name { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-id { font-size: 11px; }
+.display-group { border: 1px solid var(--divider-color, #e3e5e8); border-radius: 10px; padding: 10px 12px; }
+.display-group summary { font-size: 14px; font-weight: 500; }
+.display-group[open] summary { margin-bottom: 12px; }
+.order-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.order-item { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; border-radius: 10px; cursor: grab;
+  border: 1px solid var(--divider-color, #e3e5e8); background: var(--card-background-color, #fff); }
+.order-item.dragging { opacity: .4; }
+.order-item.absent .name { color: var(--secondary-text-color, #5f6368); }
+.order-item .grip { color: var(--secondary-text-color, #5f6368); font-size: 18px; line-height: 1; }
+.order-item .grow { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.order-pos { width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+.icon-btn.small { width: 36px; height: 36px; }
+.icon-btn[disabled] { opacity: .3; cursor: default; }
 @media (max-width: 600px) { .fields { grid-template-columns: minmax(0, 1fr); } dl { grid-template-columns: minmax(0, 1fr); } }
 `;
 
@@ -429,6 +471,7 @@ class AwtrixStudioPanel extends HTMLElement {
       h("section", { class: "row between" },
         h("h2", {}, this.t("apps")),
         h("div", { class: "row" },
+          h("button", { class: "btn", onClick: () => this._openOrder() }, icon("reorder"), this.t("reorder")),
           h("button", { class: "btn", onClick: () => this._openImport() }, icon("upload"), this.t("import")),
           h("button", { class: "btn", onClick: () => this._openExport() }, icon("download"), this.t("export")),
           h("button", { class: "btn primary", onClick: () => this._openEditor("app", null) }, icon("plus"), this.t("add_app")))),
@@ -463,7 +506,7 @@ class AwtrixStudioPanel extends HTMLElement {
     this._currentApp.textContent = snapshot.current_app || this.t("unknown");
     this._rotation.textContent = `${apps.filter((a) => a.enabled && a.pages.length).length} / ${apps.length}`;
 
-    const structure = snapshot.items.map((i) => `${i.subentry_id}:${i.kind}:${i.data.mode}`).join("|");
+    const structure = snapshot.items.map((i) => `${i.subentry_id}:${i.kind}:${i.data.mode}`).join("|") + `#${(snapshot.order || []).join("|")}`;
     if (structure !== this._structure) {
       this._structure = structure;
       this._buildCards(apps);
@@ -477,9 +520,12 @@ class AwtrixStudioPanel extends HTMLElement {
   _buildCards(apps) {
     clear(this._grid);
     this._cards = new Map();
+    // Cards follow the loop order; apps it does not name come last.
+    const order = this._snapshot?.order || [];
+    const rank = (item) => { const i = order.indexOf(item.data.app_name); return i < 0 ? Infinity : i; };
     apps
       .slice()
-      .sort((a, b) => a.data.app_name.localeCompare(b.data.app_name))
+      .sort((a, b) => rank(a) - rank(b) || a.data.app_name.localeCompare(b.data.app_name))
       .forEach((item) => {
         const name = item.data.app_name;
         const canvas = h("canvas", { role: "img", "aria-label": this.t("thumbnail", { name }) });
@@ -802,6 +848,74 @@ class AwtrixStudioPanel extends HTMLElement {
     this._main.prepend(h("div", { class: "card pad notice", role: "status" }, this.t("import_done", { n: result.imported })));
   }
 
+  // ----------------------------------------------------------- loop order
+
+  async _openOrder() {
+    this._openPage("order", this.t("order_title"));
+    const studio = this._items("app").map((i) => i.data.app_name);
+    const status = h("div", { class: "muted", role: "status" }, this.t("order_loading"));
+    const list = h("ol", { class: "order-list", "aria-label": this.t("order_title") });
+    const feedback = h("div", { class: "feedback", role: "status" });
+    const save = h("button", { class: "btn primary", disabled: true }, this.t("save"));
+    this._main.append(h("section", { class: "card pad transfer" },
+      h("h2", {}, this.t("order_title")),
+      h("div", { class: "muted" }, this.t("order_help")),
+      status, list,
+      h("div", { class: "row" }, save, h("button", { class: "btn", onClick: () => this._showOverview() }, this.t("cancel"))),
+      feedback));
+
+    const result = await this._call({ type: "awtrix_studio/loop" });
+    if (this._view.name !== "order") return;
+    const loop = result ? result.loop : null;
+    const inLoop = new Set(loop || []);
+    let names = arrangedLoop(loop, this._snapshot?.order || [], studio);
+    status.textContent = loop ? "" : this.t("order_unreachable");
+    status.hidden = Boolean(loop);
+
+    const kind = (name) => (studio.includes(name) ? "studio" : BUILTIN_APPS.includes(name) ? "builtin" : "other");
+    const label = (name) => (kind(name) === "builtin" ? this.t(`builtin_apps.${name}`) : name);
+    let dragged = null;
+    const move = (from, to) => {
+      if (to < 0 || to >= names.length || from === to) return;
+      const [name] = names.splice(from, 1);
+      names.splice(to, 0, name);
+      save.disabled = false;
+      feedback.textContent = "";
+      render();
+      const button = list.children[to]?.querySelector(from < to ? "[data-dir=down]" : "[data-dir=up]");
+      if (button && !button.disabled) button.focus();
+    };
+    const render = () => {
+      clear(list);
+      names.forEach((name, index) => {
+        const item = h("li", { class: `order-item${loop && !inLoop.has(name) ? " absent" : ""}`, draggable: "true" },
+          h("span", { class: "grip", "aria-hidden": "true" }, "⋮⋮"),
+          h("span", { class: "muted order-pos" }, String(index + 1)),
+          h("div", { class: "grow" },
+            h("span", { class: "name" }, label(name)),
+            h("span", { class: `chip${kind(name) === "studio" ? " simple" : ""}` }, this.t(`order_${kind(name)}`)),
+            loop && !inLoop.has(name) ? h("span", { class: "muted" }, this.t("order_not_in_loop")) : null),
+          h("button", { class: "icon-btn small", "data-dir": "up", disabled: index === 0, "aria-label": this.t("move_up", { name: label(name) }),
+            onClick: () => move(index, index - 1) }, icon("up")),
+          h("button", { class: "icon-btn small", "data-dir": "down", disabled: index === names.length - 1,
+            "aria-label": this.t("move_down", { name: label(name) }), onClick: () => move(index, index + 1) }, icon("down")));
+        item.addEventListener("dragstart", (e) => { dragged = index; item.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; });
+        item.addEventListener("dragend", () => { dragged = null; item.classList.remove("dragging"); });
+        item.addEventListener("dragover", (e) => { if (dragged !== null) e.preventDefault(); });
+        item.addEventListener("drop", (e) => { e.preventDefault(); if (dragged !== null) move(dragged, index); });
+        list.append(item);
+      });
+    };
+    render();
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      const response = await this._call({ type: "awtrix_studio/order", order: names });
+      if (!response) { save.disabled = false; return; }
+      names = arrangedLoop(loop, response.order, studio);
+      feedback.textContent = this.t("order_saved");
+    });
+  }
+
   // --------------------------------------------------------------- editor
 
   _openEditor(kind, subentryId, presetIndicator) {
@@ -851,6 +965,7 @@ class AwtrixStudioPanel extends HTMLElement {
         cycle_only_on_screen: d.cycle_only_on_screen ?? true,
         hide_when_empty: d.hide_when_empty ?? true,
         lifetime: d.lifetime ?? 0,
+        display: this._displayForm(d.display || {}),
       };
     }
     const used = this._items("indicator").map((i) => i.data.indicator);
@@ -877,6 +992,59 @@ class AwtrixStudioPanel extends HTMLElement {
       gradient_max: d.gradient_max ?? "",
       gradient_stops: (d.gradient_stops || []).map((stop) => ({ value: stop.value, color: toHex(stop.color, "#FFFFFF") })),
     };
+  }
+
+  _displayForm(d) {
+    const settings = d.effectSettings || {};
+    return {
+      duration: d.duration ?? "",
+      repeat: d.repeat ?? "",
+      scrollSpeed: d.scrollSpeed ?? "",
+      noScroll: d.noScroll ?? false,
+      pushIcon: String(d.pushIcon ?? 0),
+      textCase: String(d.textCase ?? 0),
+      center: d.center ?? true,
+      topText: d.topText ?? false,
+      textOffset: d.textOffset ?? "",
+      style: d.rainbow ? "rainbow" : d.gradient ? "gradient" : d.blinkText ? "blink" : d.fadeText ? "fade" : "none",
+      gradient_from: toHex(d.gradient?.[0], "#FF0000"),
+      gradient_to: toHex(d.gradient?.[1], "#0000FF"),
+      style_interval: d.blinkText ?? d.fadeText ?? 500,
+      background_on: d.background !== undefined,
+      background: toHex(d.background, "#000000"),
+      effect: d.effect || "",
+      effect_speed: settings.speed ?? "",
+      effect_palette: settings.palette || "",
+      effect_blend: settings.blend === undefined ? "" : String(settings.blend),
+      overlay: d.overlay || "",
+      lifetimeMode: String(d.lifetimeMode ?? 0),
+      save: d.save ?? false,
+    };
+  }
+
+  /** AWTRIX keys of the display options; the server drops the defaults. */
+  _displayPayload() {
+    const d = this._form.display;
+    const out = {
+      duration: numberOrEmpty(d.duration), repeat: numberOrEmpty(d.repeat), scrollSpeed: numberOrEmpty(d.scrollSpeed),
+      noScroll: d.noScroll, pushIcon: Number(d.pushIcon), textCase: Number(d.textCase), center: d.center, topText: d.topText,
+      textOffset: numberOrEmpty(d.textOffset), lifetimeMode: Number(d.lifetimeMode), save: d.save,
+    };
+    if (d.style === "rainbow") out.rainbow = true;
+    else if (d.style === "gradient") out.gradient = [d.gradient_from, d.gradient_to];
+    else if (d.style === "blink") out.blinkText = numberOrEmpty(d.style_interval);
+    else if (d.style === "fade") out.fadeText = numberOrEmpty(d.style_interval);
+    if (d.background_on) out.background = d.background;
+    if (d.effect) {
+      out.effect = d.effect;
+      const settings = {};
+      if (numberOrEmpty(d.effect_speed) !== "") settings.speed = numberOrEmpty(d.effect_speed);
+      if (d.effect_palette.trim()) settings.palette = d.effect_palette.trim();
+      if (d.effect_blend !== "") settings.blend = d.effect_blend === "true";
+      out.effectSettings = settings;
+    }
+    if (d.overlay) out.overlay = d.overlay;
+    return out;
   }
 
   _progressPayload() {
@@ -906,11 +1074,12 @@ class AwtrixStudioPanel extends HTMLElement {
         decimals: numberOrEmpty(f.decimals), show_unit: f.show_unit, hide_when_zero: f.hide_when_zero,
         ...this._progressPayload(),
         threshold_1: numberOrEmpty(f.threshold_1), color_1: f.color_1, threshold_2: numberOrEmpty(f.threshold_2), color_2: f.color_2,
-        ...this._gradientPayload() };
+        ...this._gradientPayload(), display: this._displayPayload() };
     }
     if (kind === "app") {
       return { mode: "template", app_name: f.app_name, template: f.template, page_interval: numberOrEmpty(f.page_interval),
-        cycle_only_on_screen: f.cycle_only_on_screen, hide_when_empty: f.hide_when_empty, lifetime: numberOrEmpty(f.lifetime) };
+        cycle_only_on_screen: f.cycle_only_on_screen, hide_when_empty: f.hide_when_empty, lifetime: numberOrEmpty(f.lifetime),
+        display: this._displayPayload() };
     }
     if (f.mode === "simple") {
       return { mode: "simple", indicator: f.indicator, entity_id: f.entity_id, active_state: f.active_state, color: f.color,
@@ -1183,7 +1352,8 @@ class AwtrixStudioPanel extends HTMLElement {
           this._field("page_interval", this.t("page_interval"), this._input("page_interval", "number", { min: 0.5, max: 60, step: 0.1 })),
           this._field("lifetime", this.t("lifetime"), this._input("lifetime", "number", { min: 0, max: 86400, step: 1 })),
           this._check("cycle_only_on_screen", this.t("cycle_only_on_screen"), this.t("cycle_help")),
-          this._check("hide_when_empty", this.t("hide_when_empty"), this.t("hide_help")));
+          this._check("hide_when_empty", this.t("hide_when_empty"), this.t("hide_help")),
+          this._displaySection());
       }
       return;
     }
@@ -1197,7 +1367,7 @@ class AwtrixStudioPanel extends HTMLElement {
         this._field("decimals", this.t("decimals"), this._input("decimals", "number", { min: 0, max: 4, step: 1 }), this.t("decimals_help")),
         this._check("show_unit", this.t("show_unit")),
         this._check("hide_when_zero", this.t("hide_when_zero")));
-      box.append(this._colorSection(["fixed", "steps", "gradient"], "color_by_value"), this._progressSection());
+      box.append(this._colorSection(["fixed", "steps", "gradient"], "color_by_value"), this._progressSection(), this._displaySection());
     } else {
       const effect = h("select", { id: "f-effect", onChange: (e) => { f.effect = e.target.value; this._schedulePreview(); } },
         ...["none", "blink", "fade"].map((v) => h("option", { value: v }, this.t(`effect_${v}`))));
@@ -1207,6 +1377,129 @@ class AwtrixStudioPanel extends HTMLElement {
         this._field("effect", this.t("effect"), effect),
         this._field("effect_interval", this.t("effect_interval"), this._input("effect_interval", "number", { min: 100, max: 10000, step: 100 })));
     }
+  }
+
+  // ---------------------------------------------------- display options
+
+  _displaySection() {
+    const fieldset = h("fieldset", { class: "field wide" });
+    // Groups stay open or closed when the section is rebuilt.
+    this._displayOpen = this._displayOpen || { timing: true };
+    const render = () => {
+      clear(fieldset);
+      Object.keys(this._errors).filter((key) => key.startsWith("display.")).forEach((key) => delete this._errors[key]);
+      fieldset.append(h("legend", {}, this.t("display")), h("div", { class: "muted" }, this.t("display_help")),
+        this._displayGroup("timing", this._displayTiming()),
+        this._displayGroup("text", this._displayText(render)),
+        this._displayGroup("background", this._displayBackground(render)),
+        this._displayGroup("advanced", this._displayAdvanced()));
+    };
+    render();
+    return fieldset;
+  }
+
+  _displayGroup(name, body) {
+    const details = h("details", { class: "display-group", open: Boolean(this._displayOpen[name]) },
+      h("summary", {}, this.t(`display_${name}`)), body);
+    details.addEventListener("toggle", () => { this._displayOpen[name] = details.open; });
+    return details;
+  }
+
+  /** A display option control; errors come back as `display.<awtrix key>`. */
+  _dField(key, label, control, help, wide) {
+    const error = h("div", { class: "error-text", role: "alert" });
+    this._errors[`display.${key}`] = error;
+    return h("div", { class: `field${wide ? " wide" : ""}` },
+      h("label", { for: `d-${key}` }, label), control, help ? h("div", { class: "muted" }, help) : null, error);
+  }
+
+  _dInput(key, type = "text", extra = {}, onChange) {
+    const d = this._form.display;
+    return h("input", { id: `d-${key}`, type, value: d[key], ...extra,
+      onInput: (e) => { d[key] = e.target.value; if (onChange) onChange(); this._schedulePreview(); } });
+  }
+
+  _dSelect(key, options, onChange) {
+    const d = this._form.display;
+    const select = h("select", { id: `d-${key}`, onChange: (e) => { d[key] = e.target.value; if (onChange) onChange(); this._schedulePreview(); } },
+      ...options.map(([value, label]) => h("option", { value }, label)));
+    select.value = d[key];
+    return select;
+  }
+
+  _dCheck(key, label, help, onChange) {
+    const d = this._form.display;
+    const error = h("div", { class: "error-text", role: "alert" });
+    this._errors[`display.${key}`] = error;
+    return h("div", { class: "field" },
+      h("label", { class: "check" },
+        h("input", { type: "checkbox", checked: d[key], onChange: (e) => { d[key] = e.target.checked; if (onChange) onChange(); this._schedulePreview(); } }),
+        h("span", {}, label, help ? h("span", { class: "muted", style: "display:block" }, help) : null)), error);
+  }
+
+  _displayTiming() {
+    return h("div", { class: "fields" },
+      this._dField("duration", this.t("duration"), this._dInput("duration", "number", { min: 1, max: 3600, step: 1, placeholder: this.t("clock_default") }),
+        this.t("duration_help")),
+      this._dField("repeat", this.t("repeat"), this._dInput("repeat", "number", { min: -1, max: 100, step: 1, placeholder: this.t("no_limit") }),
+        this.t("repeat_help")),
+      this._dField("scrollSpeed", this.t("scroll_speed"), this._dInput("scrollSpeed", "number", { min: 10, max: 500, step: 10, placeholder: "100" }),
+        this.t("scroll_speed_help")),
+      this._dField("pushIcon", this.t("push_icon"), this._dSelect("pushIcon", [0, 1, 2].map((n) => [String(n), this.t(`push_icon_${n}`)]))),
+      this._dCheck("noScroll", this.t("no_scroll")));
+  }
+
+  _displayText(rerender) {
+    const d = this._form.display;
+    const styles = ["none", "rainbow", "gradient", "blink", "fade"].map((v) => [v, this.t(`text_style_${v}`)]);
+    const style = this._dField("style", this.t("text_style"), this._dSelect("style", styles, rerender), this.t("text_style_help"));
+    // The server reports a style conflict on the key it refused.
+    ["rainbow", "gradient", "blinkText", "fadeText"].forEach((key) => { this._errors[`display.${key}`] = this._errors["display.style"]; });
+    let styleOptions = null;
+    if (d.style === "gradient") {
+      styleOptions = h("div", { class: "row" },
+        this._dField("gradient_from", this.t("gradient_from"), this._dInput("gradient_from", "color")),
+        this._dField("gradient_to", this.t("gradient_to"), this._dInput("gradient_to", "color")));
+    } else if (d.style === "blink" || d.style === "fade") {
+      styleOptions = this._dField("style_interval", this.t("style_interval"), this._dInput("style_interval", "number", { min: 50, max: 60000, step: 50 }));
+    }
+    return h("div", { class: "fields" },
+      this._dField("textCase", this.t("text_case"), this._dSelect("textCase", [0, 1, 2].map((n) => [String(n), this.t(`text_case_${n}`)]))),
+      this._dField("textOffset", this.t("text_offset"), this._dInput("textOffset", "number", { min: -32, max: 32, step: 1, placeholder: "0" }),
+        this.t("text_offset_help")),
+      this._dCheck("center", this.t("center")),
+      this._dCheck("topText", this.t("top_text")),
+      style, styleOptions || h("div"));
+  }
+
+  _displayBackground(rerender) {
+    const d = this._form.display;
+    const palettes = h("datalist", { id: "awtrix-studio-palettes" }, ...PALETTES.map((name) => h("option", { value: name })));
+    const effectFields = d.effect ? [
+      this._dField("speed", this.t("effect_speed"), this._dInput("effect_speed", "number", { min: 1, max: 20, step: 1, placeholder: this.t("effect_default") }),
+        this.t("effect_speed_help")),
+      this._dField("palette", this.t("effect_palette"),
+        h("div", {}, this._dInput("effect_palette", "text", { list: "awtrix-studio-palettes", maxlength: 32, spellcheck: "false",
+          placeholder: this.t("effect_default") }), palettes), this.t("effect_palette_help")),
+      this._dField("blend", this.t("effect_blend"), this._dSelect("effect_blend",
+        [["", this.t("effect_default")], ["true", this.t("yes")], ["false", this.t("no")]])),
+    ] : [];
+    return h("div", { class: "fields" },
+      this._dCheck("background_on", this.t("background_on"), null, rerender),
+      d.background_on ? this._dField("background", this.t("background_color"), this._dInput("background", "color")) : h("div"),
+      this._dField("effect", this.t("effect_bg"), this._dSelect("effect", [["", this.t("none")], ...EFFECTS.map((name) => [name, name])], rerender),
+        this.t("effect_bg_help")),
+      this._dField("overlay", this.t("overlay"), this._dSelect("overlay", [["", this.t("none")], ...OVERLAYS.map((name) => [name, this.t(`overlay_${name}`)])]),
+        this.t("overlay_help")),
+      ...effectFields);
+  }
+
+  _displayAdvanced() {
+    const template = this._form.mode === "template";
+    return h("div", { class: "fields" },
+      template ? this._dField("lifetimeMode", this.t("lifetime_mode"),
+        this._dSelect("lifetimeMode", [0, 1].map((n) => [String(n), this.t(`lifetime_mode_${n}`)])), this.t("lifetime_mode_help")) : null,
+      this._dCheck("save", this.t("save_on_clock"), this.t("save_on_clock_help")));
   }
 
   // ------------------------------------------------- color by value
@@ -1442,7 +1735,8 @@ class AwtrixStudioPanel extends HTMLElement {
     } else {
       const rendered = renderPage(page);
       drawMatrix(this._previewCanvas, rendered.pixels, { cell: 11, gap: 2, icon: rendered.icon, glow: true });
-      this._previewNote.textContent = rendered.overflow ? this.t("overflow_note") : this.t("simulated_note");
+      this._previewNote.textContent = [rendered.overflow ? this.t("overflow_note") : this.t("simulated_note"),
+        rendered.effect ? this.t("effect_not_simulated", { name: rendered.effect }) : ""].filter(Boolean).join(" ");
     }
 
     clear(this._pills);
@@ -1468,7 +1762,14 @@ class AwtrixStudioPanel extends HTMLElement {
     Object.entries(errors || {}).forEach(([field, key]) => {
       const target = this._errors[field];
       const text = this.t(`errors.${key}`) + (detail && (key === "invalid_template" || key === "invalid_pages") ? ` ${detail}` : "");
-      if (target) { target.textContent = text; shown = true; } else { this._saveFeedback.textContent = text; }
+      if (target) {
+        target.textContent = text;
+        shown = true;
+        const group = target.closest("details");
+        if (group) group.open = true;
+      } else {
+        this._saveFeedback.textContent = text;
+      }
     });
     if (shown) this._saveFeedback.textContent = "";
   }

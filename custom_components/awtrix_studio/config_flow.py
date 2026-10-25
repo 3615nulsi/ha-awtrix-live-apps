@@ -102,6 +102,7 @@ from .const import (
     SUBENTRY_TYPE_APP,
     SUBENTRY_TYPE_INDICATOR,
 )
+from .display import CONF_DISPLAY
 from .drivers import DRIVERS
 from .gradients import GRADIENTS, InvalidGradientError, resolve_stops, stops_to_data
 from .pages import InvalidPagesError, parse_pages
@@ -342,6 +343,9 @@ class _LiveSubentryFlow(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         if self._is_new:
             return self.async_create_entry(title=title, data=data, unique_id=unique_id)
+        # Display options are only edited in the panel: keep them.
+        if display := self._current.get(CONF_DISPLAY):
+            data = {**data, CONF_DISPLAY: display}
         return self.async_update_and_abort(
             self._get_entry(), self._get_reconfigure_subentry(), data=data
         )

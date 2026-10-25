@@ -78,6 +78,7 @@ from .const import (
     SUBENTRY_TYPE_APP,
     SUBENTRY_TYPE_INDICATOR,
 )
+from .display import CONF_DISPLAY, InvalidDisplayError, normalize_display
 from .gradients import InvalidGradientError, resolve_stops, stops_to_data
 from .pages import InvalidPagesError, parse_pages
 from .templates import (
@@ -257,6 +258,15 @@ def _app_colors(data: Mapping[str, Any]) -> dict[str, Any]:
     return clean
 
 
+def _display(data: Mapping[str, Any]) -> dict[str, Any]:
+    """The display options of an app (stored only when some are set)."""
+    try:
+        display = normalize_display(data.get(CONF_DISPLAY))
+    except InvalidDisplayError as err:
+        raise Invalid(f"{CONF_DISPLAY}.{err.field}", err.key) from err
+    return {CONF_DISPLAY: display} if display else {}
+
+
 # --------------------------------------------------------- whole items
 
 
@@ -319,6 +329,7 @@ def normalize_app(
             clean[CONF_DECIMALS] = int(decimals)
         clean.update(_app_colors(data))
         clean.update(_progress(data))
+        clean.update(_display(data))
         return clean
 
     return {
@@ -338,6 +349,7 @@ def normalize_app(
         CONF_LIFETIME: int(
             _number(data, CONF_LIFETIME, 0, MAX_LIFETIME) or DEFAULT_LIFETIME
         ),
+        **_display(data),
     }
 
 

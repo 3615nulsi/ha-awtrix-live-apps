@@ -77,10 +77,24 @@ function textWidth(chars) {
   return chars.reduce((w, ch) => w + glyph(ch)[0].length + 1, 0) - 1;
 }
 
-/** Render one AWTRIX page into pixels. Returns {pixels, icon, overflow}. */
+function hueColor(hue) {
+  const f = (n) => {
+    const k = (n + hue / 60) % 6;
+    return Math.round(255 * (1 - Math.max(0, Math.min(k, 4 - k, 1))));
+  };
+  return parseColor([f(5), f(3), f(1)]);
+}
+
+function mixColors(from, to, ratio) {
+  const a = parseInt(from.slice(1), 16), b = parseInt(to.slice(1), 16);
+  const channel = (shift) => Math.round(((a >> shift) & 255) * (1 - ratio) + ((b >> shift) & 255) * ratio);
+  return parseColor([channel(16), channel(8), channel(0)]);
+}
+
+/** Render one AWTRIX page into pixels. Returns {pixels, icon, overflow, effect}. */
 export function renderPage(page) {
   const pixels = new Array(WIDTH * HEIGHT).fill(OFF);
-  const result = { pixels, icon: null, overflow: false };
+  const result = { pixels, icon: null, overflow: false, effect: null };
   if (!page || typeof page !== "object" || Array.isArray(page)) return result;
 
   const set = (x, y, color) => {
@@ -89,6 +103,10 @@ export function renderPage(page) {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
     pixels[y * WIDTH + x] = isBlack(color) ? OFF : color;
   };
+
+  // Effects and overlays are animations: only named, not drawn.
+  if (typeof page.effect === "string" && page.effect) result.effect = page.effect;
+  else if (typeof page.overlay === "string" && page.overlay) result.effect = page.overlay;
 
   if (page.background !== undefined) {
     const bg = parseColor(page.background, "#000000");
@@ -109,6 +127,12 @@ export function renderPage(page) {
       : [];
   const chars = [];
   segments.forEach((s) => Array.from(s.t).forEach((ch) => chars.push({ ch, c: s.c })));
+  // Rainbow and two-color gradients replace the text color, letter by letter.
+  const gradient = Array.isArray(page.gradient) && page.gradient.length === 2
+    ? page.gradient.map((c) => parseColor(c, base)) : null;
+  if (page.rainbow === true) chars.forEach((c, i) => { c.c = hueColor((i * 360) / Math.max(chars.length, 1)); });
+  else if (gradient) chars.forEach((c, i) => { c.c = mixColors(gradient[0], gradient[1], chars.length > 1 ? i / (chars.length - 1) : 0); });
+  const top = page.topText === true ? 0 : 1;
   if (chars.length) {
     const w = textWidth(chars.map((c) => c.ch));
     const offset = Number.isFinite(page.textOffset) ? page.textOffset : 0;
@@ -118,7 +142,7 @@ export function renderPage(page) {
     else if (center) x = areaStart + offset + Math.floor((areaWidth - offset - w) / 2);
     chars.forEach(({ ch, c }) => {
       const g = glyph(ch);
-      g.forEach((row, y) => Array.from(row).forEach((bit, dx) => { if (bit === "1") set(x + dx, 1 + y, c); }));
+      g.forEach((row, y) => Array.from(row).forEach((bit, dx) => { if (bit === "1") set(x + dx, top + y, c); }));
       x += g[0].length + 1;
     });
   }
