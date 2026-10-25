@@ -20,7 +20,8 @@ No automations, no blueprints, no YAML.
 ## ✨ What you get
 
 - **A panel in your sidebar** that shows what your clock displays right now, every app with a live thumbnail, and a switch to turn each one on or off.
-- **Apps in a few clicks.** Pick a sensor, an icon and a color. Want the color to slide from green to red as CO2 rises? Pick a gradient.
+- **Apps in a few clicks.** Pick a sensor, an icon and a color. Want the color to slide from green to red as CO2 rises? Pick a gradient. A battery level? Add a progress bar.
+- **Every LaMetric icon, nothing to upload.** Search the LaMetric gallery right from the editor: Awtrix Studio sends the icon along with the app, so you no longer have to load icons onto the clock first.
 - **A live preview while you edit**, and a button to try your app on the real clock before saving.
 - **Several pages per app** that alternate on their own, like "next tram" then "the one after".
 - **The three colored indicators** of the clock, driven the same way.
@@ -56,11 +57,12 @@ Choose an entity, add a label, an icon and colors, and you're done. The preview 
 |---|---|
 | **Entity** | The sensor (or any entity) to show. |
 | **Label** | Optional text before the value, like `CO2`. |
-| **Icon** | A [LaMetric icon](https://developer.lametric.com/icons) ID, or the name of an icon stored on the clock. |
+| **Icon** | **Pick an icon** searches the [LaMetric gallery](https://developer.lametric.com/icons); Awtrix Studio sends it with the app (animated icons show their first image). You can also type the name of an icon stored on the clock. |
 | **Text color** | The default color. |
 | **Decimals** | Round the value, or leave empty to show it as is. |
 | **Show the unit** | Adds `°C`, `%`, `kW`… after the value. |
 | **Hide when the value is 0** | Handy for solar production at night. |
+| **Progress bar** | A bar at the bottom of the screen, from the app's entity or another one, empty and full at the values you choose. It can follow the text color. |
 | **Color according to the value** | **Fixed**, **steps** (up to two thresholds, each with its color), or a **gradient**: pick a ready-made one (*the higher, the worse*, *the lower, the worse*, *best in the middle*, *cold → hot*) and set its range, or make your own with 2 to 5 points. For temperatures, CO2, humidity or batteries, a sensible range is suggested. |
 
 The app also leaves the rotation by itself while its entity is unavailable.
@@ -158,7 +160,7 @@ Blue while exporting, green to red while importing. Simple mode gets close with 
 ```
 </details>
 
-Every key of the [AWTRIX custom app API](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) works: `text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`, and so on.
+Every key of the [AWTRIX custom app API](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) works: `text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`, and so on. Write `"icon": "lametric:2422"` to use an icon of the LaMetric gallery without uploading it to the clock.
 
 ## ❓ FAQ
 

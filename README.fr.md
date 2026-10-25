@@ -20,7 +20,8 @@ Sans automatisation, sans blueprint, sans YAML.
 ## ✨ Ce que ça vous apporte
 
 - **Un panneau dans la barre latérale** qui montre ce que l'horloge affiche en ce moment, chaque app avec sa vignette en direct, et un interrupteur pour activer ou désactiver chacune.
-- **Des apps en quelques clics.** Choisissez un capteur, une icône et une couleur. Vous voulez une couleur qui glisse du vert au rouge quand le CO2 monte ? Choisissez un dégradé.
+- **Des apps en quelques clics.** Choisissez un capteur, une icône et une couleur. Vous voulez une couleur qui glisse du vert au rouge quand le CO2 monte ? Choisissez un dégradé. Un niveau de batterie ? Ajoutez une barre de progression.
+- **Toutes les icônes LaMetric, rien à télécharger.** Cherchez dans la galerie LaMetric directement depuis l'éditeur : Awtrix Studio envoie l'icône avec l'app, plus besoin de charger les icônes sur l'horloge au préalable.
 - **Un aperçu en direct pendant l'édition**, et un bouton pour essayer l'app sur la vraie horloge avant d'enregistrer.
 - **Plusieurs pages par app** qui alternent toutes seules, par exemple « prochain tram » puis « le suivant ».
 - **Les trois indicateurs colorés** de l'horloge, pilotés de la même façon.
@@ -56,11 +57,12 @@ Choisissez une entité, ajoutez un libellé, une icône et des couleurs, et c'es
 |---|---|
 | **Entité** | Le capteur (ou n'importe quelle entité) à afficher. |
 | **Libellé** | Texte facultatif avant la valeur, par exemple `CO2`. |
-| **Icône** | Un identifiant d'[icône LaMetric](https://developer.lametric.com/icons), ou le nom d'une icône présente sur l'horloge. |
+| **Icône** | **Choisir une icône** cherche dans la [galerie LaMetric](https://developer.lametric.com/icons) ; Awtrix Studio l'envoie avec l'app (les icônes animées affichent leur première image). Vous pouvez aussi saisir le nom d'une icône présente sur l'horloge. |
 | **Couleur du texte** | La couleur par défaut. |
 | **Décimales** | Arrondit la valeur ; laissez vide pour l'afficher telle quelle. |
 | **Afficher l'unité** | Ajoute `°C`, `%`, `kW`… après la valeur. |
 | **Masquer quand la valeur vaut 0** | Pratique pour la production solaire la nuit. |
+| **Barre de progression** | Une barre en bas de l'écran, à partir de l'entité de l'app ou d'une autre, vide et pleine aux valeurs de votre choix. Elle peut suivre la couleur du texte. |
 | **Couleur selon la valeur** | **Fixe**, par **paliers** (jusqu'à deux seuils, chacun avec sa couleur), ou en **dégradé** : choisissez-en un tout prêt (*plus c'est haut, pire c'est*, *plus c'est bas, pire c'est*, *idéal au milieu*, *froid → chaud*) et réglez ses bornes, ou créez le vôtre avec 2 à 5 points. Pour une température, du CO2, de l'humidité ou une batterie, des bornes adaptées sont proposées. |
 
 L'app quitte aussi la rotation d'elle-même tant que son entité est indisponible.
@@ -158,7 +160,7 @@ Bleu quand vous injectez, du vert au rouge quand vous consommez sur le réseau. 
 ```
 </details>
 
-Toutes les clés de l'[API des apps personnalisées AWTRIX](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) fonctionnent : `text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`, etc.
+Toutes les clés de l'[API des apps personnalisées AWTRIX](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) fonctionnent : `text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`, etc. Écrivez `"icon": "lametric:2422"` pour utiliser une icône de la galerie LaMetric sans la télécharger sur l'horloge.
 
 ## ❓ Questions fréquentes
 
