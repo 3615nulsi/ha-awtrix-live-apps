@@ -9,6 +9,7 @@ the user in the template, and is never translated.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import ipaddress
 import json
 from typing import Any
 
@@ -82,6 +83,16 @@ class FirmwareDriver(ABC):
 
     def show_app(self, app_name: str) -> tuple[str, str] | None:
         """Return the (topic, payload) bringing an app on screen now."""
+        return None
+
+    # Icon files: firmware that can store icons and play animated ones.
+
+    def parse_address(self, payload: str) -> str | None:
+        """Return the clock's IP address from a status message, if any."""
+        return None
+
+    def icon_file(self, name: str) -> str | None:
+        """Return the path of an icon file on the clock (None: not supported)."""
         return None
 
     def navigate(self, forward: bool) -> tuple[str, str] | None:
@@ -164,6 +175,28 @@ class Awtrix3Driver(FirmwareDriver):
         ):
             return None
         return data
+
+    def parse_address(self, payload: str) -> str | None:
+        """The stats JSON carries `ip_address`; only private addresses count."""
+        try:
+            data = json.loads(payload)
+        except ValueError:
+            return None
+        value = data.get("ip_address") if isinstance(data, dict) else None
+        if not isinstance(value, str):
+            return None
+        try:
+            address = ipaddress.ip_address(value)
+        except ValueError:
+            return None
+        # The address is read from MQTT: never send requests outside the LAN.
+        if address.version != 4 or not address.is_private or address.is_loopback:
+            return None
+        return str(address)
+
+    def icon_file(self, name: str) -> str:
+        """Icons live in /ICONS; the app names them without the extension."""
+        return f"/ICONS/{name}"
 
     def show_app(self, app_name: str) -> tuple[str, str]:
         """`switch` brings an app on screen by name."""

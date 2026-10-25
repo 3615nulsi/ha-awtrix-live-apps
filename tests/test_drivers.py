@@ -46,3 +46,19 @@ def test_awtrix3_lifetime_keeps_user_value() -> None:
     driver = Awtrix3Driver("awtrix")
     assert driver.with_lifetime({"text": "a"}, 60) == {"text": "a", "lifetime": 60}
     assert driver.with_lifetime({"lifetime": 5}, 60) == {"lifetime": 5}
+
+
+def test_parse_address() -> None:
+    """Only private IPv4 addresses from the stats are used."""
+    driver = Awtrix3Driver("awtrix")
+    assert driver.parse_address('{"ip_address": "192.168.1.161"}') == "192.168.1.161"
+    for payload in (
+        '{"ip_address": "8.8.8.8"}',
+        '{"ip_address": "127.0.0.1"}',
+        '{"ip_address": "192.168.1.1/../x"}',
+        '{"ip_address": 3}',
+        "{}",
+        "nope",
+    ):
+        assert driver.parse_address(payload) is None
+    assert driver.icon_file("57980.gif") == "/ICONS/57980.gif"

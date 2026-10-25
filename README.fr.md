@@ -57,7 +57,7 @@ Choisissez une entité, ajoutez un libellé, une icône et des couleurs, et c'es
 |---|---|
 | **Entité** | Le capteur (ou n'importe quelle entité) à afficher. |
 | **Libellé** | Texte facultatif avant la valeur, par exemple `CO2`. |
-| **Icône** | **Choisir une icône** cherche dans la [galerie LaMetric](https://developer.lametric.com/icons) ; Awtrix Studio l'envoie avec l'app (les icônes animées affichent leur première image). Vous pouvez aussi saisir le nom d'une icône présente sur l'horloge. |
+| **Icône** | **Choisir une icône** cherche dans la [galerie LaMetric](https://developer.lametric.com/icons) ; Awtrix Studio l'envoie avec l'app (les icônes animées sont déposées automatiquement sur l'horloge, pour être animées). Vous pouvez aussi saisir le nom d'une icône présente sur l'horloge. |
 | **Couleur du texte** | La couleur par défaut. |
 | **Décimales** | Arrondit la valeur ; laissez vide pour l'afficher telle quelle. |
 | **Afficher l'unité** | Ajoute `°C`, `%`, `kW`… après la valeur. |

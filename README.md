@@ -57,7 +57,7 @@ Choose an entity, add a label, an icon and colors, and you're done. The preview 
 |---|---|
 | **Entity** | The sensor (or any entity) to show. |
 | **Label** | Optional text before the value, like `CO2`. |
-| **Icon** | **Pick an icon** searches the [LaMetric gallery](https://developer.lametric.com/icons); Awtrix Studio sends it with the app (animated icons show their first image). You can also type the name of an icon stored on the clock. |
+| **Icon** | **Pick an icon** searches the [LaMetric gallery](https://developer.lametric.com/icons); Awtrix Studio sends it with the app (animated icons are stored on the clock automatically, so that they play). You can also type the name of an icon stored on the clock. |
 | **Text color** | The default color. |
 | **Decimals** | Round the value, or leave empty to show it as is. |
 | **Show the unit** | Adds `°C`, `%`, `kW`… after the value. |

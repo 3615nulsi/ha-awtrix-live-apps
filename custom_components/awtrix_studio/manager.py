@@ -12,6 +12,7 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
 
+from .clock_files import ClockFiles
 from .const import (
     CONF_APP_NAME,
     CONF_CYCLE_ONLY_ON_SCREEN,
@@ -107,6 +108,7 @@ class ClockManager:
         self.hass = hass
         self.driver = driver
         self.icons = icons
+        self.files = ClockFiles(hass, driver)
         # Keyed by config subentry id.
         self.apps: dict[str, LiveApp] = {}
         self._unsubscribers: list[Callable[[], None]] = []
@@ -271,7 +273,7 @@ class ClockManager:
     async def _publish(self, topic: str, payload: str) -> None:
         # Icons from the LaMetric gallery are sent inline, nothing is stored
         # on the clock.
-        payload = await self.icons.async_resolve(payload)
+        payload = await self.icons.async_resolve(payload, self.files)
         try:
             await mqtt.async_publish(self.hass, topic, payload, qos=0, retain=False)
         except HomeAssistantError as err:
@@ -295,7 +297,14 @@ class ClockManager:
         payload = msg.payload
         if isinstance(payload, bytes):
             payload = payload.decode(errors="replace")
-        uptime = self.driver.parse_uptime(str(payload))
+        payload = str(payload)
+        address = self.driver.parse_address(payload)
+        if address is not None and self.files.set_address(address):
+            # Animated icons can now be stored on the clock.
+            self.hass.async_create_task(
+                self.async_republish_all(), f"awtrix_studio republish {self.prefix}"
+            )
+        uptime = self.driver.parse_uptime(payload)
         if uptime is None:
             return
         rebooted = self._last_uptime is not None and uptime < self._last_uptime

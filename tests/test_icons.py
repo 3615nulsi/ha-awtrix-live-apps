@@ -12,14 +12,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.template import Template
 from PIL import Image
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_mqtt_message,
+)
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 from pytest_homeassistant_custom_component.typing import (
     MqttMockHAClient,
     WebSocketGenerator,
 )
 
+from custom_components.awtrix_studio.clock_files import ClockFiles
 from custom_components.awtrix_studio.const import DATA_ICONS, DOMAIN
+from custom_components.awtrix_studio.drivers import Awtrix3Driver
 from custom_components.awtrix_studio.icons import (
     ICON_URL,
     SEARCH_URL,
@@ -244,3 +249,91 @@ def test_progress_bar_is_validated() -> None:
                 "progress_max": 5,
             }
         )
+
+
+async def test_animated_icons_are_stored_on_the_clock(
+    hass: HomeAssistant,
+    mqtt_mock: MqttMockHAClient,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """An animated icon is uploaded once, then named by its number."""
+    gif = png(frames=3)
+    aioclient_mock.get(ICON_URL.format(id=57980), content=gif)
+    aioclient_mock.get(
+        "http://192.168.1.161/list", json=[{"type": "file", "name": "2422.gif"}]
+    )
+    aioclient_mock.post("http://192.168.1.161/edit", status=200)
+    hass.states.async_set("sensor.bikes", "12")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=PREFIX,
+        unique_id=PREFIX,
+        data={"firmware": "awtrix3", "prefix": PREFIX},
+        subentries_data=[
+            ConfigSubentryDataWithId(
+                data={
+                    "mode": "simple",
+                    "app_name": "bike",
+                    "entity_id": "sensor.bikes",
+                    "icon": "lametric:57980",
+                    "color": [255, 255, 255],
+                },
+                subentry_id="s_bike",
+                subentry_type="app",
+                title="bike",
+                unique_id="bike",
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    def last_page() -> dict[str, Any]:
+        payloads = [
+            c.args[1]
+            for c in mqtt_mock.async_publish.call_args_list
+            if c.args[0] == f"{PREFIX}/custom/bike"
+        ]
+        return json.loads(payloads[-1])
+
+    # The clock's address is not known yet: first image, inline.
+    assert last_page()["icon"] == convert(gif)["jpeg"]
+
+    # A public address from MQTT is ignored.
+    async_fire_mqtt_message(
+        hass, f"{PREFIX}/stats", json.dumps({"uptime": 5, "ip_address": "8.8.8.8"})
+    )
+    await hass.async_block_till_done()
+    assert not any(
+        str(call[1]).startswith("http://8.8.8.8") for call in aioclient_mock.mock_calls
+    )
+
+    async_fire_mqtt_message(
+        hass,
+        f"{PREFIX}/stats",
+        json.dumps({"uptime": 10, "ip_address": "192.168.1.161"}),
+    )
+    await hass.async_block_till_done()
+    assert last_page()["icon"] == "57980"
+    uploads = [c for c in aioclient_mock.mock_calls if c[0].upper() == "POST"]
+    assert len(uploads) == 1
+
+    # Already on the clock: not uploaded again.
+    await entry.runtime_data.async_republish_all()
+    await hass.async_block_till_done()
+    assert len([c for c in aioclient_mock.mock_calls if c[0].upper() == "POST"]) == 1
+
+
+async def test_unreachable_clock_falls_back_to_first_image(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Without the clock's file manager, the first image is sent inline."""
+    gif = png(frames=2)
+    aioclient_mock.get(ICON_URL.format(id=7), content=gif)
+    aioclient_mock.get("http://192.168.1.50/list", status=401)
+    store = IconStore(hass)
+    files = ClockFiles(hass, Awtrix3Driver(PREFIX))
+    files.set_address("192.168.1.50")
+    page = json.loads(await store.async_resolve('{"icon":"lametric:7"}', files))
+    assert page["icon"] == convert(gif)["jpeg"]

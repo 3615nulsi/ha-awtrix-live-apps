@@ -3,7 +3,9 @@
 An app can name its icon `lametric:<id>`. Awtrix Studio downloads that icon
 once, keeps it in Home Assistant's storage and sends it inline with the app (as
 an 8x8 JPEG in Base64, which AWTRIX 3 accepts in the `icon` key). Nothing has
-to be uploaded to the clock first. Animated icons are sent as their first frame.
+to be uploaded to the clock first. Animated icons can only play from the
+clock's memory: they are stored there automatically (see clock_files), with
+their first image as a fallback.
 
 Plain icon names and numbers keep their usual meaning: a file stored on the
 clock.
@@ -25,6 +27,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from PIL import Image
 
+from .clock_files import ClockFiles
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,6 +65,7 @@ def convert(data: bytes) -> dict[str, Any]:
     try:
         with Image.open(BytesIO(data)) as image:
             animated = getattr(image, "n_frames", 1) > 1
+            file_format = (image.format or "").lower()
             image.seek(0)
             frame = image.convert("RGBA")
     except (OSError, ValueError, Image.DecompressionBombError) as err:
@@ -78,11 +82,15 @@ def convert(data: bytes) -> dict[str, Any]:
     buffer = BytesIO()
     # Full quality and no chroma subsampling: an 8x8 image is a single block.
     rgb.save(buffer, format="JPEG", quality=100, subsampling=0)
-    return {
+    icon = {
         "pixels": pixels,
         "jpeg": base64.b64encode(buffer.getvalue()).decode("ascii"),
         "animated": animated,
     }
+    if animated and file_format == "gif":
+        # Kept to be stored on the clock, which can play it.
+        icon["gif"] = base64.b64encode(data).decode("ascii")
+    return icon
 
 
 class IconStore:
@@ -105,7 +113,10 @@ class IconStore:
         self._icons = {
             key: value
             for key, value in icons.items()
-            if isinstance(value, dict) and isinstance(value.get("jpeg"), str)
+            if isinstance(value, dict)
+            and isinstance(value.get("jpeg"), str)
+            # Animated icons downloaded by 0.7 lack their GIF: fetch them again.
+            and not (value.get("animated") and "gif" not in value)
         }
 
     def get(self, lametric_id: int) -> dict[str, Any] | None:
@@ -194,8 +205,13 @@ class IconStore:
         # A full page means there may be more.
         return {"icons": icons, "more": len(icons) >= PAGE_SIZE}
 
-    async def async_resolve(self, payload: str) -> str:
-        """Replace a `lametric:<id>` icon in a page payload by the icon itself."""
+    async def async_resolve(self, payload: str, files: ClockFiles | None = None) -> str:
+        """Replace a `lametric:<id>` icon in a page payload by the icon itself.
+
+        Animated icons are stored on the clock (when `files` can) and named by
+        their number, so that the clock plays them; otherwise the first image
+        is sent inline.
+        """
         if PREFIX not in payload:
             return payload
         try:
@@ -210,6 +226,14 @@ class IconStore:
         icon = await self.async_get(lametric_id)
         if icon is None:
             page.pop("icon")
+        elif (
+            files is not None
+            and "gif" in icon
+            and await files.async_ensure(
+                str(lametric_id), base64.b64decode(icon["gif"]), "gif"
+            )
+        ):
+            page["icon"] = str(lametric_id)
         else:
             page["icon"] = icon["jpeg"]
         return json.dumps(page, ensure_ascii=False, separators=(",", ":"))
