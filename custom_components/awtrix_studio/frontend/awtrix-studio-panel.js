@@ -39,6 +39,22 @@ const STARTER_INDICATOR_TEMPLATE = `{#- Render {"color": ...} to light the indic
 {}
 {%- endif -%}`;
 
+const NG_STARTER_APP_TEMPLATE = `{#- Render a JSON object (one page) or a list of objects
+    (pages that alternate). Any key of the AWTRIX NG pushed app API works;
+    unknown keys make the clock refuse the app. -#}
+{{ [
+  {"text": now().strftime('%H:%M'), "textColor": "#FFFFFF"},
+  {"text": states('sun.sun'), "textColor": "#FFB74D"}
+] | tojson }}`;
+
+const NG_STARTER_INDICATOR_TEMPLATE = `{#- Render {"color": ...} to light the indicator
+    (optionally with "blinkMs" or "fadeMs"), or {} to turn it off. -#}
+{%- if is_state('sun.sun', 'below_horizon') -%}
+{"color": "#FF8C00", "fadeMs": 2000}
+{%- else -%}
+{}
+{%- endif -%}`;
+
 // ------------------------------------------------------------------ helpers
 
 function h(tag, props, ...children) {
@@ -407,7 +423,9 @@ class AwtrixStudioPanel extends HTMLElement {
   _subscribeScreen() {
     if (!this._snapshot?.features?.screen) return;
     this._subscribe("screen", { type: "awtrix_studio/screen", entry_id: this._entryId }, (event) => {
-      this._screen = { pixels: screenToPixels(event.pixels), at: Date.now() };
+      const width = Number.isInteger(event.width) ? event.width : WIDTH;
+      const height = Number.isInteger(event.height) ? event.height : HEIGHT;
+      this._screen = { pixels: screenToPixels(event.pixels, width, height), width, height, at: Date.now() };
       this._drawMirror();
       if (this._view.name === "edit" && this._previewTab === "real") this._drawPreview();
     });
@@ -606,6 +624,10 @@ class AwtrixStudioPanel extends HTMLElement {
     });
   }
 
+  _isNG() {
+    return this._snapshot?.firmware === "awtrix_ng";
+  }
+
   _findItem(subentryId) {
     return (this._snapshot?.items || []).find((i) => i.subentry_id === subentryId);
   }
@@ -622,7 +644,9 @@ class AwtrixStudioPanel extends HTMLElement {
     if (!this._mirrorCanvas) return;
     const fresh = this._screen.pixels && Date.now() - this._screen.at < MIRROR_STALE_MS;
     if (fresh) {
-      drawMatrix(this._mirrorCanvas, this._screen.pixels, { cell: 12, gap: 2, glow: true });
+      // A large screen (TC002, 52 × 16) gets smaller cells to fit.
+      const cell = this._screen.width > WIDTH ? 7 : 12;
+      drawMatrix(this._mirrorCanvas, this._screen.pixels, { cell, gap: cell > 8 ? 2 : 1, glow: true, width: this._screen.width, height: this._screen.height });
       this._mirrorCaption.textContent = this.t("live_mirror");
     } else {
       const rendered = this._simulatedScreen();
@@ -960,7 +984,7 @@ class AwtrixStudioPanel extends HTMLElement {
         color_2: toHex(d.color_2, "#FF6B5B"),
         color_mode: d.color_mode || (d.threshold_1 != null || d.threshold_2 != null ? "steps" : "fixed"),
         ...this._gradientForm(d),
-        template: d.template || STARTER_APP_TEMPLATE,
+        template: d.template || (this._isNG() ? NG_STARTER_APP_TEMPLATE : STARTER_APP_TEMPLATE),
         page_interval: d.page_interval ?? 1.5,
         cycle_only_on_screen: d.cycle_only_on_screen ?? true,
         hide_when_empty: d.hide_when_empty ?? true,
@@ -980,7 +1004,7 @@ class AwtrixStudioPanel extends HTMLElement {
       effect_interval: d.effect_interval ?? 1000,
       color_mode: d.color_mode || "state",
       ...this._gradientForm(d),
-      template: d.template || STARTER_INDICATOR_TEMPLATE,
+      template: d.template || (this._isNG() ? NG_STARTER_INDICATOR_TEMPLATE : STARTER_INDICATOR_TEMPLATE),
     };
   }
 
@@ -1726,7 +1750,9 @@ class AwtrixStudioPanel extends HTMLElement {
 
     if (this._previewTab === "real") {
       const pixels = this._screen.pixels || new Array(WIDTH * HEIGHT).fill(null);
-      drawMatrix(this._previewCanvas, pixels, { cell: 11, gap: 2, glow: true });
+      const size = this._screen.pixels ? { width: this._screen.width, height: this._screen.height } : {};
+      const cell = (size.width || WIDTH) > WIDTH ? 6 : 11;
+      drawMatrix(this._previewCanvas, pixels, { cell, gap: cell > 8 ? 2 : 1, glow: true, ...size });
       this._previewNote.textContent = this._screen.pixels ? this.t("live_mirror") : this.t("live_waiting");
     } else if (kind === "indicator") {
       const pixels = addIndicators(new Array(WIDTH * HEIGHT).fill(null), page ? { [this._form.indicator]: page } : {});

@@ -5,7 +5,8 @@
       "mqtt_not_configured": "Set up the MQTT integration first: Awtrix Studio talks to the clock through your MQTT broker."
     },
     "error": {
-      "invalid_prefix": "Enter the clock's MQTT prefix, without spaces, `#` or `+`."
+      "invalid_prefix": "Enter the clock's MQTT prefix, without spaces, `#` or `+`.",
+      "not_detected": "The clock did not answer on this prefix. Check the prefix, or choose the firmware yourself."
     },
     "step": {
       "user": {
@@ -16,7 +17,7 @@
           "prefix": "MQTT prefix"
         },
         "data_description": {
-          "firmware": "Firmware running on the clock.",
+          "firmware": "Firmware running on the clock. **Detect automatically** asks the clock, which must be on and connected to MQTT.",
           "prefix": "The prefix set in the clock's MQTT settings, for example `awtrix_1f1b94`."
         }
       }
@@ -215,7 +216,9 @@
   "selector": {
     "firmware": {
       "options": {
-        "awtrix3": "AWTRIX 3"
+        "auto": "Detect automatically",
+        "awtrix3": "AWTRIX 3",
+        "awtrix_ng": "AWTRIX NG (also Ulanzi TC002)"
       }
     },
     "indicator": {

@@ -224,9 +224,9 @@ export function addIndicators(pixels, indicators) {
   return pixels;
 }
 
-/** Convert the clock's real screen (256 integers) into pixels. */
-export function screenToPixels(values) {
-  if (!Array.isArray(values) || values.length !== WIDTH * HEIGHT) return new Array(WIDTH * HEIGHT).fill(OFF);
+/** Convert the clock's real screen (width × height integers) into pixels. */
+export function screenToPixels(values, width = WIDTH, height = HEIGHT) {
+  if (!Array.isArray(values) || values.length !== width * height) return new Array(width * height).fill(OFF);
   return values.map((v) => (Number.isInteger(v) && v > 0 ? parseColor(v) : OFF));
 }
 
@@ -279,15 +279,18 @@ function iconPixels(entry) {
 }
 
 /**
- * Draw pixels on a canvas. `options`: {cell, gap, icon, offColor, glow}.
+ * Draw pixels on a canvas. `options`: {cell, gap, icon, offColor, glow,
+ * width, height}; the size defaults to the 32 × 8 of AWTRIX 3.
  * The canvas is redrawn when an icon finishes loading.
  */
 export function drawMatrix(canvas, pixels, options = {}) {
+  const cols = options.width ?? WIDTH;
+  const rows = options.height ?? HEIGHT;
   const cell = options.cell ?? 10;
   const gap = options.gap ?? 2;
   const ratio = window.devicePixelRatio || 1;
-  const width = WIDTH * cell + (WIDTH - 1) * gap;
-  const height = HEIGHT * cell + (HEIGHT - 1) * gap;
+  const width = cols * cell + (cols - 1) * gap;
+  const height = rows * cell + (rows - 1) * gap;
   if (canvas.width !== Math.round(width * ratio)) {
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(height * ratio);
@@ -305,7 +308,7 @@ export function drawMatrix(canvas, pixels, options = {}) {
     if (entry) {
       const icon = iconPixels(entry);
       if (icon) {
-        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (icon[y * 8 + x]) drawn[y * WIDTH + x] = icon[y * 8 + x];
+        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (icon[y * 8 + x]) drawn[y * cols + x] = icon[y * 8 + x];
       } else {
         overlay = entry.image;
       }
@@ -313,9 +316,9 @@ export function drawMatrix(canvas, pixels, options = {}) {
   }
 
   const radius = Math.max(1, cell / 4);
-  for (let y = 0; y < HEIGHT; y++) {
-    for (let x = 0; x < WIDTH; x++) {
-      const color = drawn[y * WIDTH + x];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const color = drawn[y * cols + x];
       ctx.fillStyle = color || options.offColor || "#1A1A1E";
       if (color && options.glow) { ctx.shadowColor = color; ctx.shadowBlur = cell / 2; } else { ctx.shadowBlur = 0; }
       const px = x * (cell + gap), py = y * (cell + gap);

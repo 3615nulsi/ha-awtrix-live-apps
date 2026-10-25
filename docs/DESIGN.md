@@ -76,9 +76,20 @@ n° 3) : un modèle AWTRIX 3 ne s'affiche pas tel quel sur NG, il faut l'écrire
 avec les champs NG. La documentation fournira chaque exemple dans les deux
 formats.
 
-À confirmer pendant le développement, dans la documentation NG : le topic de
-l'app affichée, la suppression d'une app poussée, et le support des primitives
-de dessin (pixels, lignes) dans les apps poussées.
+Confirmé dans la documentation NG (v1.2) et mis en œuvre dans le pilote NG :
+
+| | AWTRIX 3 | AWTRIX NG |
+|---|---|---|
+| App affichée | `<préfixe>/stats/currentApp` | `<préfixe>/state/apps/active` (retenu) |
+| Supprimer une app | payload vide | payload vide |
+| Redémarrage | `uptime` qui repart à zéro | retour à `online` sur `<préfixe>/availability` (sur TC002, `uptimeSeconds` ne repart pas à zéro) |
+| Miroir d'écran | `sendscreen` → tableau de 256 couleurs | `cmd/screen/get` → `{"width","height","pixels"}` (52 × 16 sur TC002) |
+| Ordre des apps | HTTP seulement (`/api/reorder`), à réappliquer quand une app revient | MQTT (`cmd/apps/order`), mémorisé par l'horloge : envoyé une fois, avec la liste des apps désactivées lue en HTTP (`/api/v1/apps`) |
+| Icône inline | JPEG en Base64, première image seulement | data URL ; un GIF animé est joué (message limité à 8 Ko) |
+
+Les dessins existent sur NG, sous forme de tableaux (`["pixel", x, y, c]`).
+Le contenu (mode simple, options d'affichage, aperçu) reste au format AWTRIX 3
+pour l'instant : sa traduction en clés NG est l'étape suivante.
 
 ## 5. Configuration (interface uniquement)
 

@@ -76,7 +76,7 @@ async def async_setup_entry(
         if subentry.subentry_type in MANAGED_SUBENTRY_TYPES:
             manager.add_app(subentry)
     await manager.async_start()
-    manager.set_order(entry.options.get(CONF_APP_ORDER))
+    manager.set_order(entry.options.get(CONF_APP_ORDER), initial=True)
     entry.runtime_data = manager
     _async_tidy_registries(hass, entry)
 

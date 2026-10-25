@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from custom_components.awtrix_studio.drivers import Awtrix3Driver, get_driver
+from custom_components.awtrix_studio.drivers import (
+    Awtrix3Driver,
+    AwtrixNGDriver,
+    get_driver,
+)
 
 
 def test_awtrix3_topics() -> None:
@@ -62,3 +68,100 @@ def test_parse_address() -> None:
     ):
         assert driver.parse_address(payload) is None
     assert driver.icon_file("57980.gif") == "/ICONS/57980.gif"
+
+
+# ----------------------------------------------------------------- AWTRIX NG
+
+
+def test_ng_topics() -> None:
+    """AWTRIX NG commands live under cmd/, its state under state/."""
+    driver = get_driver("awtrix_ng", "awtrixNG")
+    assert isinstance(driver, AwtrixNGDriver)
+    assert driver.app_topic("tram") == "awtrixNG/cmd/apps/pushed/tram"
+    assert driver.indicator_topic("2") == "awtrixNG/cmd/indicators/2"
+    assert driver.current_app_topic == "awtrixNG/state/apps/active"
+    assert driver.status_topic == "awtrixNG/state/device"
+    assert driver.online_topic == "awtrixNG/availability"
+    assert driver.remove_payload == ""
+    assert driver.show_app("tram") == ("awtrixNG/cmd/apps/switch", "tram")
+    assert driver.navigate(True) == ("awtrixNG/cmd/apps/next", "")
+    assert driver.navigate(False) == ("awtrixNG/cmd/apps/previous", "")
+    assert driver.screen_request() == ("awtrixNG/cmd/screen/get", "")
+    assert driver.screen_topic == "awtrixNG/state/screen"
+    assert driver.icon_file("x") is None
+    assert driver.can_reorder
+    assert driver.keeps_order
+
+
+def test_ng_state() -> None:
+    """Uptime, address and availability are read from the state topics."""
+    driver = AwtrixNGDriver("awtrixNG")
+    state = '{"uptimeSeconds": 4213, "ipAddress": "192.168.1.42"}'
+    assert driver.parse_uptime(state) == 4213.0
+    assert driver.parse_address(state) == "192.168.1.42"
+    assert driver.parse_address('{"ipAddress": "8.8.8.8"}') is None
+    assert driver.parse_uptime('{"uptime": 3}') is None
+    assert driver.parse_online("online") is True
+    assert driver.parse_online("offline\n") is False
+    assert driver.parse_online("maybe") is None
+    assert driver.parse_current_app(" weather ") == "weather"
+
+
+def test_ng_lifetime_is_in_milliseconds() -> None:
+    """`lifetimeMs` is added unless the template set it."""
+    driver = AwtrixNGDriver("awtrixNG")
+    assert driver.with_lifetime({"text": "a"}, 120) == {
+        "text": "a",
+        "lifetimeMs": 120000,
+    }
+    assert driver.with_lifetime({"lifetimeMs": 5}, 120) == {"lifetimeMs": 5}
+
+
+def test_ng_screen_of_any_size() -> None:
+    """A TC002 sends 52 x 16 pixels; the size comes with the screen."""
+    driver = AwtrixNGDriver("awtrixNG")
+    screen = driver.parse_screen(
+        json.dumps({"width": 52, "height": 16, "pixels": [0xFF0000] * 832})
+    )
+    assert screen is not None
+    assert (screen.width, screen.height, len(screen.pixels)) == (52, 16, 832)
+    for bad in (
+        {"width": 52, "height": 16, "pixels": [0] * 831},
+        {"width": 4096, "height": 4096, "pixels": []},
+        {"width": True, "height": 1, "pixels": [0]},
+        {"width": 1, "height": 1, "pixels": ["#FF0000"]},
+        [0] * 256,
+    ):
+        assert driver.parse_screen(json.dumps(bad)) is None
+
+
+def test_ng_loop_and_order() -> None:
+    """The loop comes by slot; the order keeps the apps switched off."""
+    driver = AwtrixNGDriver("awtrixNG")
+    apps = [
+        {"name": "Time", "enabled": True, "inLoop": True, "slot": 0, "present": True},
+        {"name": "weather", "enabled": True, "inLoop": True, "slot": 2},
+        {"name": "Time", "enabled": True, "inLoop": True, "slot": 3},
+        {"name": "tram", "enabled": True, "inLoop": True, "slot": 1},
+        {"name": "co2", "enabled": True, "inLoop": False, "slot": 4, "present": False},
+        {"name": "Date", "enabled": False, "inLoop": False, "slot": None},
+        {"name": "", "enabled": False},
+        "junk",
+    ]
+    state = driver.parse_loop(json.dumps(apps))
+    assert state is not None
+    assert state.apps == ["Time", "tram", "weather"]
+    assert state.disabled == ["Date"]
+    assert driver.parse_loop('{"Time": 0}') is None
+
+    topic, payload = driver.order_message(["tram", "Time"], ["Date"])
+    assert topic == "awtrixNG/cmd/apps/order"
+    assert json.loads(payload) == {"order": ["tram", "Time"], "disabled": ["Date"]}
+
+
+def test_inline_icons() -> None:
+    """AWTRIX 3 takes a bare JPEG; AWTRIX NG a data URL, GIF when there is one."""
+    assert Awtrix3Driver("a").inline_icon("JPEG", "GIF") == "JPEG"
+    ng = AwtrixNGDriver("a")
+    assert ng.inline_icon("JPEG", None) == "data:image/jpeg;base64,JPEG"
+    assert ng.inline_icon("JPEG", "GIF") == "data:image/gif;base64,GIF"

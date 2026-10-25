@@ -48,6 +48,7 @@ from .const import (
     SUBENTRY_TYPE_INDICATOR,
 )
 from .display import CONF_DISPLAY, apply_display
+from .drivers import Screen
 from .icons import IconError, IconStore
 from .loop import MAX_APP_NAME, MAX_LOOP, clean_order
 from .manager import MANAGED_SUBENTRY_TYPES, ClockManager
@@ -157,7 +158,7 @@ def _snapshot(entry: ConfigEntry, manager: ClockManager | None) -> dict[str, Any
         "features": {
             "screen": bool(driver and driver.screen_topic),
             "navigate": bool(driver and driver.navigate(True)),
-            "order": bool(driver and driver.reorder_path),
+            "order": bool(driver and driver.can_reorder),
         },
         "items": items,
     }
@@ -307,9 +308,16 @@ async def ws_screen(
         return
 
     @callback
-    def forward(pixels: list[int]) -> None:
+    def forward(screen: Screen) -> None:
         connection.send_message(
-            websocket_api.event_message(msg["id"], {"pixels": pixels})
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "width": screen.width,
+                    "height": screen.height,
+                    "pixels": screen.pixels,
+                },
+            )
         )
 
     connection.subscriptions[msg["id"]] = await manager.async_subscribe_screen(forward)
