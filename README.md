@@ -20,7 +20,7 @@ No automations, no blueprints, no YAML.
 ## ✨ What you get
 
 - **A panel in your sidebar** that shows what your clock displays right now, every app with a live thumbnail, and a switch to turn each one on or off.
-- **Apps in a few clicks.** Pick a sensor, an icon and a color. Want the text to turn orange above 25 °C and red above 30 °C? Two fields.
+- **Apps in a few clicks.** Pick a sensor, an icon and a color. Want the color to slide from green to red as CO2 rises? Pick a gradient.
 - **A live preview while you edit**, and a button to try your app on the real clock before saving.
 - **Several pages per app** that alternate on their own, like "next tram" then "the one after".
 - **The three colored indicators** of the clock, driven the same way.
@@ -61,7 +61,7 @@ Choose an entity, add a label, an icon and colors, and you're done. The preview 
 | **Decimals** | Round the value, or leave empty to show it as is. |
 | **Show the unit** | Adds `°C`, `%`, `kW`… after the value. |
 | **Hide when the value is 0** | Handy for solar production at night. |
-| **Colors by value** | Up to two thresholds, each with its own color. |
+| **Color according to the value** | **Fixed**, **steps** (up to two thresholds, each with its color), or a **gradient**: pick a ready-made one (*the higher, the worse*, *the lower, the worse*, *best in the middle*, *cold → hot*) and set its range, or make your own with 2 to 5 points. For temperatures, CO2, humidity or batteries, a sensible range is suggested. |
 
 The app also leaves the rotation by itself while its entity is unavailable.
 
@@ -75,7 +75,7 @@ Started in simple mode and want to go further? **Convert to template mode** open
 
 ### Indicators
 
-The clock has three small colored lights on the right edge of its screen. Light one up while a door is open, show your solar surplus as a color, signal new mail… In simple mode, it's "lit in this color while this entity is in this state", with an optional blink or fade.
+The clock has three small colored lights on the right edge of its screen. Light one up while a door is open, show your solar surplus as a color, signal new mail… In simple mode, it's either "lit in this color while this entity is in this state", or "always lit, with a color that follows this value" using the same gradients as apps. Blink or fade are optional.
 
 ## 📝 Template examples
 
@@ -138,7 +138,7 @@ Shows the next departure, then the following one, with one or two dots at the bo
 <details>
 <summary><b>An indicator showing your solar surplus</b></summary>
 
-Blue while exporting, green to red while importing.
+Blue while exporting, green to red while importing. Simple mode gets close with a custom gradient (blue at -2 kW, green at 0, yellow at 0.5, red at 3); this template gives finer control.
 
 ```jinja
 {%- set w = states('sensor.grid_power') | float(0) * 1000 -%}

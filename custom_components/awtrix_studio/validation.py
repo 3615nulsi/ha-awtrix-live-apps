@@ -19,16 +19,24 @@ from homeassistant.helpers.template import Template
 
 from .const import (
     APP_NAME_PATTERN,
+    COLOR_GRADIENT,
+    COLOR_STATE,
+    COLOR_STEPS,
     CONF_ACTIVE_STATE,
     CONF_APP_NAME,
     CONF_COLOR,
     CONF_COLOR_1,
     CONF_COLOR_2,
+    CONF_COLOR_MODE,
     CONF_CYCLE_ONLY_ON_SCREEN,
     CONF_DECIMALS,
     CONF_EFFECT,
     CONF_EFFECT_INTERVAL,
     CONF_ENTITY_ID,
+    CONF_GRADIENT,
+    CONF_GRADIENT_MAX,
+    CONF_GRADIENT_MIN,
+    CONF_GRADIENT_STOPS,
     CONF_HIDE_WHEN_EMPTY,
     CONF_HIDE_WHEN_ZERO,
     CONF_ICON,
@@ -51,6 +59,7 @@ from .const import (
     DEFAULT_PAGE_INTERVAL,
     EFFECT_NONE,
     EFFECTS,
+    GRADIENT_CUSTOM,
     INDICATORS,
     MAX_LIFETIME,
     MAX_PAGE_INTERVAL,
@@ -60,8 +69,14 @@ from .const import (
     SUBENTRY_TYPE_APP,
     SUBENTRY_TYPE_INDICATOR,
 )
+from .gradients import InvalidGradientError, resolve_stops, stops_to_data
 from .pages import InvalidPagesError, parse_pages
-from .templates import ENTITY_ID_RE, HEX_COLOR_RE
+from .templates import (
+    ENTITY_ID_RE,
+    HEX_COLOR_RE,
+    app_color_mode,
+    indicator_color_mode,
+)
 
 MAX_TEXT = 64
 MAX_TEMPLATE = 20_000
@@ -170,6 +185,47 @@ def _template(hass: HomeAssistant, data: Mapping[str, Any]) -> str:
     return value
 
 
+def _gradient(data: Mapping[str, Any]) -> dict[str, Any]:
+    """The gradient settings, checked; a custom gradient keeps its stops."""
+    try:
+        stops = resolve_stops(data)
+    except InvalidGradientError as err:
+        raise Invalid(err.field, err.key) from err
+    if data.get(CONF_GRADIENT) == GRADIENT_CUSTOM:
+        return {
+            CONF_GRADIENT: GRADIENT_CUSTOM,
+            CONF_GRADIENT_STOPS: stops_to_data(stops),
+        }
+    return {
+        CONF_GRADIENT: data[CONF_GRADIENT],
+        CONF_GRADIENT_MIN: stops[0][0],
+        CONF_GRADIENT_MAX: stops[-1][0],
+    }
+
+
+def _app_colors(data: Mapping[str, Any]) -> dict[str, Any]:
+    """How a simple app picks its color: fixed, by steps or by gradient."""
+    color_mode = app_color_mode(data)
+    clean: dict[str, Any] = {CONF_COLOR_MODE: color_mode}
+    if color_mode == COLOR_GRADIENT:
+        clean.update(_gradient(data))
+    if color_mode != COLOR_STEPS:
+        return clean
+    for threshold, color in (
+        (CONF_THRESHOLD_1, CONF_COLOR_1),
+        (CONF_THRESHOLD_2, CONF_COLOR_2),
+    ):
+        value = _number(data, threshold, -1e9, 1e9)
+        if value is None:
+            continue
+        chosen = _color(data, color, None)
+        if chosen is None:
+            raise Invalid(color, "color_required")
+        clean[threshold] = value
+        clean[color] = chosen
+    return clean
+
+
 # --------------------------------------------------------- whole items
 
 
@@ -206,6 +262,8 @@ def normalize_app(
         name = "preview"
     else:
         name = data.get(CONF_APP_NAME)
+        if isinstance(name, str):
+            name = name.strip()
         if not isinstance(name, str) or not re.fullmatch(APP_NAME_PATTERN, name):
             raise Invalid(CONF_APP_NAME, "invalid_app_name")
         if any(
@@ -228,18 +286,7 @@ def normalize_app(
         decimals = _number(data, CONF_DECIMALS, 0, 4)
         if decimals is not None:
             clean[CONF_DECIMALS] = int(decimals)
-        for threshold, color in (
-            (CONF_THRESHOLD_1, CONF_COLOR_1),
-            (CONF_THRESHOLD_2, CONF_COLOR_2),
-        ):
-            value = _number(data, threshold, -1e9, 1e9)
-            if value is None:
-                continue
-            chosen = _color(data, color, None)
-            if chosen is None:
-                raise Invalid(color, "color_required")
-            clean[threshold] = value
-            clean[color] = chosen
+        clean.update(_app_colors(data))
         return clean
 
     return {
@@ -295,19 +342,26 @@ def normalize_indicator(
         effect = data.get(CONF_EFFECT, EFFECT_NONE)
         if effect not in EFFECTS:
             raise Invalid(CONF_EFFECT, "invalid_value")
-        return {
+        clean = {
             CONF_MODE: MODE_SIMPLE,
             CONF_INDICATOR: number,
             CONF_ENTITY_ID: _entity(data),
-            CONF_ACTIVE_STATE: _text(data, CONF_ACTIVE_STATE, DEFAULT_ACTIVE_STATE)
-            or DEFAULT_ACTIVE_STATE,
-            CONF_COLOR: _color(data, CONF_COLOR, list(DEFAULT_INDICATOR_COLOR)),
+            CONF_COLOR_MODE: indicator_color_mode(data),
             CONF_EFFECT: effect,
             CONF_EFFECT_INTERVAL: int(
                 _number(data, CONF_EFFECT_INTERVAL, 100, 10000)
                 or DEFAULT_EFFECT_INTERVAL
             ),
         }
+        if clean[CONF_COLOR_MODE] == COLOR_STATE:
+            clean[CONF_ACTIVE_STATE] = (
+                _text(data, CONF_ACTIVE_STATE, DEFAULT_ACTIVE_STATE)
+                or DEFAULT_ACTIVE_STATE
+            )
+            clean[CONF_COLOR] = _color(data, CONF_COLOR, list(DEFAULT_INDICATOR_COLOR))
+        else:
+            clean.update(_gradient(data))
+        return clean
     return {
         CONF_MODE: MODE_TEMPLATE,
         CONF_INDICATOR: number,

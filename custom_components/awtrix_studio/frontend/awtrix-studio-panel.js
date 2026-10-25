@@ -9,6 +9,7 @@
 
 import { addIndicators, drawMatrix, parseColor, renderPage, screenToPixels, WIDTH, HEIGHT } from "./matrix.js";
 import { translator } from "./i18n.js";
+import { MAX_STOPS, PRESETS, colorAt, cssGradient, formStops, presetCss, rgbToHex, suggestion } from "./gradients.js";
 
 const PREVIEW_DEBOUNCE = 350;
 const MIRROR_STALE_MS = 5000;
@@ -171,6 +172,24 @@ pre { margin: 0; padding: 12px; border-radius: 8px; font-family: var(--ha-font-f
 .pill.active { background: var(--primary-color, #0277bd); color: var(--text-primary-color, #fff); }
 .banner { padding: 12px 16px; border-radius: 10px; background: rgba(219,68,55,.12); color: var(--error-color, #db4437); }
 .feedback { font-size: 13px; color: var(--secondary-text-color, #5f6368); min-height: 18px; }
+.color-body { display: flex; flex-direction: column; gap: 12px; }
+.gradient-editor { display: flex; flex-direction: column; gap: 12px; }
+.presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.preset { font: inherit; font-size: 13px; text-align: left; display: flex; flex-direction: column; gap: 6px; padding: 8px; cursor: pointer;
+  border-radius: 10px; border: 1px solid var(--divider-color, #c4c7cc); background: var(--card-background-color, #fff); color: inherit; }
+.preset[aria-checked="true"] { border-color: var(--primary-color, #0277bd); box-shadow: 0 0 0 1px var(--primary-color, #0277bd); }
+.preset-swatch { height: 14px; border-radius: 7px; display: block; }
+.preset-swatch.custom { background: repeating-linear-gradient(45deg, rgba(127,127,127,.25) 0 6px, rgba(127,127,127,.08) 6px 12px); }
+.stops { display: flex; flex-direction: column; gap: 8px; }
+.stop { flex-wrap: nowrap; }
+.field .stop input.stop-value { width: 120px; flex: 0 0 120px; font: inherit; font-size: 15px; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--divider-color, #c4c7cc); background: var(--card-background-color, #fff); color: inherit; }
+.field .stop input[type=color] { width: 56px; height: 38px; padding: 2px; border-radius: 8px; border: 1px solid var(--divider-color, #c4c7cc); background: none; }
+.gradient-track { position: relative; height: 22px; margin: 4px 11px 0; }
+.gradient-bar { position: absolute; inset: 4px 0; border-radius: 7px; }
+.gradient-bar.empty { background: rgba(127,127,127,.15); }
+.gradient-marker { position: absolute; top: 0; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%;
+  border: 3px solid var(--card-background-color, #fff); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
 @media (max-width: 600px) { .fields { grid-template-columns: minmax(0, 1fr); } dl { grid-template-columns: minmax(0, 1fr); } }
 `;
 
@@ -560,6 +579,8 @@ class AwtrixStudioPanel extends HTMLElement {
         color_1: toHex(d.color_1, "#FFB74D"),
         threshold_2: d.threshold_2 ?? "",
         color_2: toHex(d.color_2, "#FF6B5B"),
+        color_mode: d.color_mode || (d.threshold_1 != null || d.threshold_2 != null ? "steps" : "fixed"),
+        ...this._gradientForm(d),
         template: d.template || STARTER_APP_TEMPLATE,
         page_interval: d.page_interval ?? 1.5,
         cycle_only_on_screen: d.cycle_only_on_screen ?? true,
@@ -577,8 +598,30 @@ class AwtrixStudioPanel extends HTMLElement {
       color: toHex(d.color, "#FF8C00"),
       effect: d.effect || "none",
       effect_interval: d.effect_interval ?? 1000,
+      color_mode: d.color_mode || "state",
+      ...this._gradientForm(d),
       template: d.template || STARTER_INDICATOR_TEMPLATE,
     };
+  }
+
+  _gradientForm(d) {
+    return {
+      gradient: d.gradient || "high_bad",
+      _presetTouched: Boolean(d.gradient),
+      gradient_min: d.gradient_min ?? "",
+      gradient_max: d.gradient_max ?? "",
+      gradient_stops: (d.gradient_stops || []).map((stop) => ({ value: stop.value, color: toHex(stop.color, "#FFFFFF") })),
+    };
+  }
+
+  _gradientPayload() {
+    const f = this._form;
+    if (f.color_mode !== "gradient") return { color_mode: f.color_mode };
+    if (f.gradient === "custom") {
+      return { color_mode: "gradient", gradient: "custom",
+        gradient_stops: f.gradient_stops.map((stop) => ({ value: numberOrEmpty(stop.value), color: stop.color })) };
+    }
+    return { color_mode: "gradient", gradient: f.gradient, gradient_min: numberOrEmpty(f.gradient_min), gradient_max: numberOrEmpty(f.gradient_max) };
   }
 
   _payload() {
@@ -587,7 +630,8 @@ class AwtrixStudioPanel extends HTMLElement {
     if (kind === "app" && f.mode === "simple") {
       return { mode: "simple", app_name: f.app_name, entity_id: f.entity_id, label: f.label, icon: f.icon, color: f.color,
         decimals: numberOrEmpty(f.decimals), show_unit: f.show_unit, hide_when_zero: f.hide_when_zero,
-        threshold_1: numberOrEmpty(f.threshold_1), color_1: f.color_1, threshold_2: numberOrEmpty(f.threshold_2), color_2: f.color_2 };
+        threshold_1: numberOrEmpty(f.threshold_1), color_1: f.color_1, threshold_2: numberOrEmpty(f.threshold_2), color_2: f.color_2,
+        ...this._gradientPayload() };
     }
     if (kind === "app") {
       return { mode: "template", app_name: f.app_name, template: f.template, page_interval: numberOrEmpty(f.page_interval),
@@ -595,7 +639,7 @@ class AwtrixStudioPanel extends HTMLElement {
     }
     if (f.mode === "simple") {
       return { mode: "simple", indicator: f.indicator, entity_id: f.entity_id, active_state: f.active_state, color: f.color,
-        effect: f.effect, effect_interval: numberOrEmpty(f.effect_interval) };
+        effect: f.effect, effect_interval: numberOrEmpty(f.effect_interval), ...this._gradientPayload() };
     }
     return { mode: "template", indicator: f.indicator, template: f.template };
   }
@@ -661,7 +705,24 @@ class AwtrixStudioPanel extends HTMLElement {
 
   _input(key, type = "text", extra = {}) {
     return h("input", { id: `f-${key}`, type, value: this._form[key], ...extra,
-      onInput: (e) => { this._form[key] = e.target.value; this._schedulePreview(); } });
+      onInput: (e) => {
+        this._form[key] = e.target.value;
+        if (key === "entity_id") this._entityChanged();
+        this._schedulePreview();
+      } });
+  }
+
+  _entityChanged() {
+    const f = this._form;
+    if (f.color_mode !== "gradient" || f.gradient === "custom" || !this._hass.states[f.entity_id]) { this._updateGradientBar(); return; }
+    const hadRange = f.gradient_min !== "" || f.gradient_max !== "";
+    this._suggestRange();
+    if (!hadRange && (f.gradient_min !== "" || f.gradient_max !== "")) {
+      const body = this._fieldsBox.querySelector(".color-body");
+      if (body) this._renderColorBody(body);
+    } else {
+      this._updateGradientBar();
+    }
   }
 
   _check(key, label, help) {
@@ -722,29 +783,183 @@ class AwtrixStudioPanel extends HTMLElement {
         this._field("decimals", this.t("decimals"), this._input("decimals", "number", { min: 0, max: 4, step: 1 }), this.t("decimals_help")),
         this._check("show_unit", this.t("show_unit")),
         this._check("hide_when_zero", this.t("hide_when_zero")));
-      const thresholdRow = (n, label) => {
-        const error = h("div", { class: "error-text", role: "alert" });
-        this._errors[`color_${n}`] = error;
-        this._errors[`threshold_${n}`] = error;
-        return h("div", { class: "row" },
-          h("label", { for: `f-threshold_${n}` }, label),
-          h("div", { class: "field", style: "width:110px" }, this._input(`threshold_${n}`, "number", { step: "any" })),
-          h("span", { "aria-hidden": "true" }, "→"),
-          h("div", { class: "field" }, this._input(`color_${n}`, "color", { "aria-label": `${label} · ${this.t("color")}` })),
-          error);
-      };
-      box.append(h("fieldset", { class: "field wide" }, h("legend", {}, this.t("thresholds")),
-        thresholdRow(1, this.t("above")), thresholdRow(2, this.t("then_above"))));
+      box.append(this._colorSection(["fixed", "steps", "gradient"], "color_by_value"));
     } else {
       const effect = h("select", { id: "f-effect", onChange: (e) => { f.effect = e.target.value; this._schedulePreview(); } },
         ...["none", "blink", "fade"].map((v) => h("option", { value: v }, this.t(`effect_${v}`))));
       effect.value = f.effect;
       box.append(
-        this._field("active_state", this.t("active_state"), this._input("active_state", "text", { maxlength: 64 })),
-        this._field("color", this.t("color"), this._input("color", "color")),
+        this._colorSection(["state", "gradient"], "indicator_lights"),
         this._field("effect", this.t("effect"), effect),
         this._field("effect_interval", this.t("effect_interval"), this._input("effect_interval", "number", { min: 100, max: 10000, step: 100 })));
     }
+  }
+
+  // ------------------------------------------------- color by value
+
+  _colorSection(modes, legend) {
+    const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": this.t(legend) });
+    const body = h("div", { class: "color-body" });
+    const select = (mode) => {
+      this._form.color_mode = mode;
+      Array.from(tabs.children).forEach((tab, i) => tab.setAttribute("aria-selected", modes[i] === mode ? "true" : "false"));
+      if (mode === "gradient") this._suggestRange();
+      this._renderColorBody(body);
+      this._schedulePreview();
+    };
+    modes.forEach((mode) => tabs.append(h("button", { role: "tab", "aria-selected": this._form.color_mode === mode ? "true" : "false",
+      onClick: () => select(mode) }, this.t(`color_mode_${mode}`))));
+    this._renderColorBody(body);
+    return h("fieldset", { class: "field wide" }, h("legend", {}, this.t(legend)), tabs, body);
+  }
+
+  _renderColorBody(body) {
+    clear(body);
+    const f = this._form;
+    const error = (key) => {
+      const el = h("div", { class: "error-text", role: "alert" });
+      this._errors[key] = el;
+      return el;
+    };
+    if (f.color_mode === "fixed") {
+      body.append(h("div", { class: "muted" }, this.t("color_fixed_help")));
+    } else if (f.color_mode === "state") {
+      body.append(h("div", { class: "fields" },
+        this._field("active_state", this.t("active_state"), this._input("active_state", "text", { maxlength: 64 })),
+        this._field("color", this.t("color"), this._input("color", "color"))));
+    } else if (f.color_mode === "steps") {
+      const row = (n, label) => {
+        const err = error(`color_${n}`);
+        this._errors[`threshold_${n}`] = err;
+        return h("div", { class: "row" },
+          h("label", { for: `f-threshold_${n}` }, label),
+          h("div", { class: "field", style: "width:110px" }, this._input(`threshold_${n}`, "number", { step: "any" })),
+          h("span", { "aria-hidden": "true" }, "→"),
+          h("div", { class: "field" }, this._input(`color_${n}`, "color", { "aria-label": `${label} · ${this.t("color")}` })),
+          err);
+      };
+      body.append(h("div", { class: "muted" }, this.t("color_steps_help")), row(1, this.t("above")), row(2, this.t("then_above")));
+    } else {
+      body.append(this._gradientEditor(error));
+    }
+  }
+
+  _gradientEditor(error) {
+    const f = this._form;
+    const wrap = h("div", { class: "gradient-editor" });
+    const presets = h("div", { class: "presets", role: "radiogroup", "aria-label": this.t("gradient") });
+    [...Object.keys(PRESETS), "custom"].forEach((name) => {
+      const swatch = h("span", { class: "preset-swatch" + (name === "custom" ? " custom" : "") });
+      if (name !== "custom") swatch.style.background = presetCss(name);
+      presets.append(h("button", { class: "preset", role: "radio", "aria-checked": f.gradient === name ? "true" : "false",
+        onClick: () => this._pickGradient(name, wrap) }, swatch, h("span", {}, this.t(`gradient_${name}`))));
+    });
+    wrap.append(presets, error("gradient"));
+
+    if (f.gradient === "custom") {
+      const list = h("div", { class: "stops" });
+      f.gradient_stops.forEach((stop, i) => {
+        list.append(h("div", { class: "row stop" },
+          h("input", { type: "number", step: "any", value: stop.value, "aria-label": this.t("stop_value", { n: i + 1 }), class: "stop-value",
+            onInput: (e) => { stop.value = e.target.value; this._updateGradientBar(); this._schedulePreview(); } }),
+          h("input", { type: "color", value: stop.color, "aria-label": this.t("stop_color", { n: i + 1 }),
+            onInput: (e) => { stop.color = e.target.value; this._updateGradientBar(); this._schedulePreview(); } }),
+          f.gradient_stops.length > 2 ? h("button", { class: "btn small", "aria-label": this.t("remove_stop", { n: i + 1 }),
+            onClick: () => { f.gradient_stops.splice(i, 1); this._rerenderGradient(wrap); this._schedulePreview(); } }, "✕") : null));
+      });
+      wrap.append(h("div", { class: "muted" }, this.t("custom_help")), list,
+        f.gradient_stops.length < MAX_STOPS ? h("button", { class: "btn small", style: "align-self:flex-start", onClick: () => this._addStop(wrap) },
+          icon("plus"), this.t("add_stop")) : "",
+        error("gradient_stops"));
+    } else {
+      wrap.append(h("div", { class: "fields" },
+        this._field("gradient_min", this.t("gradient_min"), this._input("gradient_min", "number", { step: "any" }), this.t("gradient_min_help")),
+        this._field("gradient_max", this.t("gradient_max"), this._input("gradient_max", "number", { step: "any" }), this.t("gradient_max_help"))));
+    }
+
+    this._gradientBar = h("div", { class: "gradient-bar" });
+    this._gradientMarker = h("div", { class: "gradient-marker" });
+    this._gradientLabels = h("div", { class: "row between muted" });
+    this._gradientNow = h("div", { class: "muted" });
+    wrap.append(h("div", { class: "gradient-track" }, this._gradientBar, this._gradientMarker), this._gradientLabels, this._gradientNow);
+    // Inputs re-render the bar on every keystroke without rebuilding the form.
+    wrap.addEventListener("input", () => this._updateGradientBar());
+    this._updateGradientBar();
+    return wrap;
+  }
+
+  _rerenderGradient(wrap) {
+    const parent = wrap.parentNode;
+    if (!parent) return;
+    this._renderColorBody(parent);
+  }
+
+  _pickGradient(name, wrap) {
+    const f = this._form;
+    if (name === "custom" && f.gradient !== "custom" && !f.gradient_stops.length) {
+      // Start from what is on screen: the current preset, or a simple range.
+      const stops = formStops(f) || formStops({ ...f, gradient: f.gradient in PRESETS ? f.gradient : "high_bad", gradient_min: 0, gradient_max: 100 });
+      f.gradient_stops = stops.map(([value, color]) => ({ value: Math.round(value * 1000) / 1000, color: rgbToHex(color) }));
+    }
+    f.gradient = name;
+    f._presetTouched = true;
+    if (name !== "custom") this._suggestRange();
+    this._rerenderGradient(wrap);
+    this._schedulePreview();
+  }
+
+  _addStop(wrap) {
+    const stops = this._form.gradient_stops;
+    const last = stops[stops.length - 1];
+    const prev = stops[stops.length - 2];
+    const step = last && prev ? Number(last.value) - Number(prev.value) : 10;
+    stops.push({ value: last ? Number(last.value) + (Number.isFinite(step) && step > 0 ? step : 10) : 0, color: last ? last.color : "#ffffff" });
+    this._rerenderGradient(wrap);
+    this._schedulePreview();
+  }
+
+  /** Fill an empty range from the entity's kind (°C, ppm, %…). */
+  _suggestRange() {
+    const f = this._form;
+    if (f.gradient_min !== "" || f.gradient_max !== "") return;
+    const hint = suggestion(this._hass.states[f.entity_id]);
+    if (!hint) return;
+    const [preset, low, high] = hint;
+    if (f.color_mode === "gradient" && !f._presetTouched) f.gradient = preset;
+    f.gradient_min = low;
+    f.gradient_max = high;
+  }
+
+  _updateGradientBar() {
+    if (!this._gradientBar) return;
+    const stops = formStops(this._form);
+    if (!stops) {
+      this._gradientBar.style.background = "";
+      this._gradientBar.classList.add("empty");
+      this._gradientMarker.hidden = true;
+      clear(this._gradientLabels);
+      this._gradientNow.textContent = this.t("gradient_incomplete");
+      return;
+    }
+    this._gradientBar.classList.remove("empty");
+    this._gradientBar.style.background = cssGradient(stops);
+    clear(this._gradientLabels);
+    const low = stops[0][0];
+    const high = stops[stops.length - 1][0];
+    this._gradientLabels.append(h("span", {}, String(+low.toFixed(3))), h("span", {}, String(+high.toFixed(3))));
+    const state = this._hass.states[this._form.entity_id];
+    const value = state ? Number(state.state) : NaN;
+    if (!state || state.state === "" || !Number.isFinite(value)) {
+      this._gradientMarker.hidden = true;
+      this._gradientNow.textContent = state ? this.t("gradient_not_number") : "";
+      return;
+    }
+    const ratio = Math.max(0, Math.min(1, (value - low) / (high - low)));
+    this._gradientMarker.hidden = false;
+    this._gradientMarker.style.left = `${(ratio * 100).toFixed(2)}%`;
+    this._gradientMarker.style.background = rgbToHex(colorAt(stops, value));
+    const unit = state.attributes?.unit_of_measurement || "";
+    this._gradientNow.textContent = this.t("gradient_now", { value: `${state.state}${unit ? ` ${unit}` : ""}` });
   }
 
   _setMode(mode) {

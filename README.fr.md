@@ -20,7 +20,7 @@ Sans automatisation, sans blueprint, sans YAML.
 ## ✨ Ce que ça vous apporte
 
 - **Un panneau dans la barre latérale** qui montre ce que l'horloge affiche en ce moment, chaque app avec sa vignette en direct, et un interrupteur pour activer ou désactiver chacune.
-- **Des apps en quelques clics.** Choisissez un capteur, une icône et une couleur. Vous voulez le texte orange au-dessus de 25 °C et rouge au-dessus de 30 °C ? Deux champs.
+- **Des apps en quelques clics.** Choisissez un capteur, une icône et une couleur. Vous voulez une couleur qui glisse du vert au rouge quand le CO2 monte ? Choisissez un dégradé.
 - **Un aperçu en direct pendant l'édition**, et un bouton pour essayer l'app sur la vraie horloge avant d'enregistrer.
 - **Plusieurs pages par app** qui alternent toutes seules, par exemple « prochain tram » puis « le suivant ».
 - **Les trois indicateurs colorés** de l'horloge, pilotés de la même façon.
@@ -61,7 +61,7 @@ Choisissez une entité, ajoutez un libellé, une icône et des couleurs, et c'es
 | **Décimales** | Arrondit la valeur ; laissez vide pour l'afficher telle quelle. |
 | **Afficher l'unité** | Ajoute `°C`, `%`, `kW`… après la valeur. |
 | **Masquer quand la valeur vaut 0** | Pratique pour la production solaire la nuit. |
-| **Couleurs selon la valeur** | Jusqu'à deux seuils, chacun avec sa couleur. |
+| **Couleur selon la valeur** | **Fixe**, par **paliers** (jusqu'à deux seuils, chacun avec sa couleur), ou en **dégradé** : choisissez-en un tout prêt (*plus c'est haut, pire c'est*, *plus c'est bas, pire c'est*, *idéal au milieu*, *froid → chaud*) et réglez ses bornes, ou créez le vôtre avec 2 à 5 points. Pour une température, du CO2, de l'humidité ou une batterie, des bornes adaptées sont proposées. |
 
 L'app quitte aussi la rotation d'elle-même tant que son entité est indisponible.
 
@@ -75,7 +75,7 @@ Vous avez commencé en mode simple et voulez aller plus loin ? **Convertir en mo
 
 ### Les indicateurs
 
-L'horloge a trois petits voyants colorés sur le bord droit de l'écran. Allumez-en un quand une porte est ouverte, affichez votre surplus solaire en couleur, signalez un nouveau courrier… En mode simple, c'est « allumé de cette couleur tant que cette entité est dans cet état », avec clignotement ou fondu en option.
+L'horloge a trois petits voyants colorés sur le bord droit de l'écran. Allumez-en un quand une porte est ouverte, affichez votre surplus solaire en couleur, signalez un nouveau courrier… En mode simple, c'est soit « allumé de cette couleur tant que cette entité est dans cet état », soit « toujours allumé, d'une couleur qui suit cette valeur », avec les mêmes dégradés que les apps. Clignotement ou fondu en option.
 
 ## 📝 Exemples de modèles
 
@@ -138,7 +138,7 @@ Affiche le prochain départ, puis le suivant, avec un ou deux points en bas pour
 <details>
 <summary><b>Un indicateur pour le surplus solaire</b></summary>
 
-Bleu quand vous injectez, du vert au rouge quand vous consommez sur le réseau.
+Bleu quand vous injectez, du vert au rouge quand vous consommez sur le réseau. Le mode simple s'en approche avec un dégradé personnalisé (bleu à -2 kW, vert à 0, jaune à 0,5, rouge à 3) ; ce modèle permet un réglage plus fin.
 
 ```jinja
 {%- set w = states('sensor.puissance_reseau') | float(0) * 1000 -%}

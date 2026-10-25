@@ -512,3 +512,54 @@ async def test_indicators(
         result["flow_id"], {"indicator": "1", "template": "{}"}
     )
     assert result["errors"] == {"indicator": "indicator_in_use"}
+
+
+async def test_gradient_indicator_flow(
+    hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+) -> None:
+    """The config flow offers preset gradients; custom ones live in the panel."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=PREFIX,
+        unique_id=PREFIX,
+        data={"firmware": "awtrix3", "prefix": PREFIX},
+    )
+    await setup_entry(hass, entry)
+    hass.states.async_set("sensor.battery", "10")
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, "indicator"), context={"source": "user"}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "simple"}
+    )
+    form = {
+        "indicator": "2",
+        "entity_id": "sensor.battery",
+        "color_mode": "gradient",
+        "gradient": "custom",
+        "active_state": "on",
+        "color": [255, 140, 0],
+        "effect": "none",
+        "effect_interval": 1000,
+    }
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], form
+    )
+    assert result["errors"] == {"gradient": "custom_in_panel"}
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {**form, "gradient": "low_bad", "gradient_min": 100, "gradient_max": 10},
+    )
+    assert result["errors"] == {"gradient_max": "invalid_range"}
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {**form, "gradient": "low_bad", "gradient_min": 10, "gradient_max": 100},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert [json.loads(p) for p in published(mqtt_mock, f"{PREFIX}/indicator2")] == [
+        {"color": [255, 0, 0]}
+    ]

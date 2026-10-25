@@ -37,7 +37,14 @@
         "app_name_exists": "Cette horloge a déjà une app portant ce nom.",
         "color_required": "Choisissez la couleur à utiliser au-dessus de ce seuil.",
         "invalid_template": "Le modèle n'a pas pu être rendu : {error}",
-        "invalid_pages": "Le modèle doit produire un objet JSON (une page) ou une liste d'objets (plusieurs pages) : {error}"
+        "invalid_pages": "Le modèle doit produire un objet JSON (une page) ou une liste d'objets (plusieurs pages) : {error}",
+        "gradient_range_required": "Saisissez le minimum et le maximum du dégradé.",
+        "invalid_range": "Le maximum doit être supérieur au minimum.",
+        "invalid_stops": "Un dégradé personnalisé a besoin de 2 à 5 points, chacun avec une valeur et une couleur.",
+        "stops_not_increasing": "Les points du dégradé doivent aller de la plus petite valeur à la plus grande.",
+        "custom_in_panel": "Les dégradés personnalisés se modifient dans le panneau Awtrix Studio (barre latérale). Choisissez un dégradé prêt à l'emploi ici.",
+        "invalid_value": "Valeur invalide.",
+        "invalid_color": "Couleur invalide."
       },
       "step": {
         "user": {
@@ -71,7 +78,11 @@
             "threshold_1": "Au-dessus de",
             "color_1": "Couleur au-dessus du premier seuil",
             "threshold_2": "Puis au-dessus de",
-            "color_2": "Couleur au-dessus du second seuil"
+            "color_2": "Couleur au-dessus du second seuil",
+            "color_mode": "Couleur selon la valeur",
+            "gradient": "Dégradé",
+            "gradient_min": "Minimum du dégradé",
+            "gradient_max": "Maximum du dégradé"
           },
           "data_description": {
             "app_name": "Nom de l'app sur l'horloge. Il ne pourra plus être modifié.",
@@ -79,7 +90,11 @@
             "icon": "Identifiant d'icône LaMetric (par exemple `2422`) ou nom d'un fichier d'icône présent sur l'horloge.",
             "decimals": "Laissez vide pour afficher la valeur telle quelle.",
             "threshold_1": "Facultatif. Au-dessus de cette valeur, le texte prend la couleur du premier seuil.",
-            "threshold_2": "Facultatif. Au-dessus de cette valeur, le texte prend la couleur du second seuil."
+            "threshold_2": "Facultatif. Au-dessus de cette valeur, le texte prend la couleur du second seuil.",
+            "color_mode": "Fixe : toujours la couleur du texte. Paliers : les seuils ci-dessous. Dégradé : la couleur évolue en douceur entre le minimum et le maximum.",
+            "gradient": "Utilisé en mode dégradé. Les dégradés personnalisés se modifient dans le panneau.",
+            "gradient_min": "À cette valeur ou en dessous, la première couleur du dégradé.",
+            "gradient_max": "À cette valeur ou au-dessus, la dernière couleur du dégradé."
           }
         },
         "template": {
@@ -116,14 +131,21 @@
       "error": {
         "indicator_in_use": "Cet indicateur est déjà configuré.",
         "invalid_template": "Le modèle n'a pas pu être rendu : {error}",
-        "invalid_pages": "Le modèle doit produire un objet JSON, ou un objet vide pour éteindre l'indicateur : {error}"
+        "invalid_pages": "Le modèle doit produire un objet JSON, ou un objet vide pour éteindre l'indicateur : {error}",
+        "gradient_range_required": "Saisissez le minimum et le maximum du dégradé.",
+        "invalid_range": "Le maximum doit être supérieur au minimum.",
+        "invalid_stops": "Un dégradé personnalisé a besoin de 2 à 5 points, chacun avec une valeur et une couleur.",
+        "stops_not_increasing": "Les points du dégradé doivent aller de la plus petite valeur à la plus grande.",
+        "custom_in_panel": "Les dégradés personnalisés se modifient dans le panneau Awtrix Studio (barre latérale). Choisissez un dégradé prêt à l'emploi ici.",
+        "invalid_value": "Valeur invalide.",
+        "invalid_color": "Couleur invalide."
       },
       "step": {
         "user": {
           "title": "Ajouter un indicateur",
           "description": "Les indicateurs sont les pixels de couleur sur le bord droit de l'écran. Comment voulez-vous piloter celui-ci ?",
           "menu_options": {
-            "simple": "Simple : allumé tant qu'une entité est dans un état donné",
+            "simple": "Simple : allumé dans un état donné, ou couleur selon une valeur",
             "template": "Modèle : couleur calculée par un modèle"
           }
         },
@@ -137,18 +159,24 @@
         },
         "simple": {
           "title": "Indicateur simple",
-          "description": "L'indicateur s'allume tant que l'entité est dans l'état choisi, et s'éteint sinon.",
+          "description": "Allumé d'une couleur tant que l'entité est dans l'état choisi, ou d'une couleur qui suit sa valeur. Éteint tant que l'entité est indisponible.",
           "data": {
             "indicator": "Indicateur",
             "entity_id": "Entité",
             "active_state": "Allumé quand l'état est",
             "color": "Couleur",
             "effect": "Effet",
-            "effect_interval": "Vitesse de l'effet"
+            "effect_interval": "Vitesse de l'effet",
+            "color_mode": "Comment l'indicateur s'allume",
+            "gradient": "Dégradé",
+            "gradient_min": "Minimum du dégradé",
+            "gradient_max": "Maximum du dégradé"
           },
           "data_description": {
             "active_state": "Par exemple `on`, `open` ou `home`.",
-            "effect_interval": "Durée d'un cycle de clignotement ou de fondu."
+            "effect_interval": "Durée d'un cycle de clignotement ou de fondu.",
+            "color_mode": "Dans un état : allumé de la couleur ci-dessous tant que l'entité est dans cet état. Dégradé : toujours allumé, d'une couleur qui suit la valeur de l'entité.",
+            "gradient": "Utilisé en mode dégradé. Les dégradés personnalisés se modifient dans le panneau."
           }
         },
         "template": {
@@ -193,6 +221,28 @@
         "none": "Fixe",
         "blink": "Clignotement",
         "fade": "Fondu"
+      }
+    },
+    "color_mode": {
+      "options": {
+        "fixed": "Fixe",
+        "steps": "Paliers",
+        "gradient": "Dégradé"
+      }
+    },
+    "indicator_color_mode": {
+      "options": {
+        "state": "Allumé dans un état donné",
+        "gradient": "Couleur selon la valeur"
+      }
+    },
+    "gradient": {
+      "options": {
+        "high_bad": "Plus c'est haut, pire c'est (vert → jaune → rouge)",
+        "low_bad": "Plus c'est bas, pire c'est (rouge → jaune → vert)",
+        "middle_good": "Idéal au milieu (rouge → vert → rouge)",
+        "cold_hot": "Froid → chaud (bleu → blanc → orange → rouge)",
+        "custom": "Personnalisé"
       }
     }
   },

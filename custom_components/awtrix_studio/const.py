@@ -46,6 +46,23 @@ CONF_COLOR_2: Final = "color_2"
 
 DEFAULT_COLOR: Final = [255, 255, 255]
 
+# How the color is chosen (apps: fixed, steps or gradient; indicators: lit in
+# a state, or gradient). Missing on items created before 0.4: inferred.
+CONF_COLOR_MODE: Final = "color_mode"
+COLOR_FIXED: Final = "fixed"
+COLOR_STEPS: Final = "steps"
+COLOR_GRADIENT: Final = "gradient"
+COLOR_STATE: Final = "state"
+APP_COLOR_MODES: Final = (COLOR_FIXED, COLOR_STEPS, COLOR_GRADIENT)
+INDICATOR_COLOR_MODES: Final = (COLOR_STATE, COLOR_GRADIENT)
+
+CONF_GRADIENT: Final = "gradient"
+CONF_GRADIENT_MIN: Final = "gradient_min"
+CONF_GRADIENT_MAX: Final = "gradient_max"
+CONF_GRADIENT_STOPS: Final = "gradient_stops"
+GRADIENT_CUSTOM: Final = "custom"
+DEFAULT_GRADIENT: Final = "high_bad"
+
 # Indicators
 CONF_INDICATOR: Final = "indicator"
 INDICATORS: Final = ("1", "2", "3")

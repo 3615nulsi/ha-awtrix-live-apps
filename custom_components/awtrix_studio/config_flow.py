@@ -35,18 +35,26 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.template import Template
 
 from .const import (
+    APP_COLOR_MODES,
     APP_NAME_PATTERN,
+    COLOR_GRADIENT,
+    COLOR_STEPS,
     CONF_ACTIVE_STATE,
     CONF_APP_NAME,
     CONF_COLOR,
     CONF_COLOR_1,
     CONF_COLOR_2,
+    CONF_COLOR_MODE,
     CONF_CYCLE_ONLY_ON_SCREEN,
     CONF_DECIMALS,
     CONF_EFFECT,
     CONF_EFFECT_INTERVAL,
     CONF_ENTITY_ID,
     CONF_FIRMWARE,
+    CONF_GRADIENT,
+    CONF_GRADIENT_MAX,
+    CONF_GRADIENT_MIN,
+    CONF_GRADIENT_STOPS,
     CONF_HIDE_WHEN_EMPTY,
     CONF_HIDE_WHEN_ZERO,
     CONF_ICON,
@@ -64,6 +72,7 @@ from .const import (
     DEFAULT_COLOR,
     DEFAULT_CYCLE_ONLY_ON_SCREEN,
     DEFAULT_EFFECT_INTERVAL,
+    DEFAULT_GRADIENT,
     DEFAULT_HIDE_WHEN_EMPTY,
     DEFAULT_INDICATOR_COLOR,
     DEFAULT_LIFETIME,
@@ -73,6 +82,8 @@ from .const import (
     EFFECT_NONE,
     EFFECTS,
     FIRMWARE_AWTRIX3,
+    GRADIENT_CUSTOM,
+    INDICATOR_COLOR_MODES,
     INDICATORS,
     MAX_LIFETIME,
     MAX_PAGE_INTERVAL,
@@ -83,8 +94,14 @@ from .const import (
     SUBENTRY_TYPE_INDICATOR,
 )
 from .drivers import DRIVERS
+from .gradients import GRADIENTS, InvalidGradientError, resolve_stops, stops_to_data
 from .pages import InvalidPagesError, parse_pages
-from .templates import build_app_template, build_indicator_template
+from .templates import (
+    app_color_mode,
+    build_app_template,
+    build_indicator_template,
+    indicator_color_mode,
+)
 
 MQTT_DOMAIN = "mqtt"
 
@@ -122,6 +139,27 @@ def _seconds(minimum: float, maximum: float, step: float) -> NumberSelector:
             mode=NumberSelectorMode.BOX,
         )
     )
+
+
+def _select(options: tuple[str, ...], key: str) -> SelectSelector:
+    return SelectSelector(
+        SelectSelectorConfig(
+            options=list(options), translation_key=key, mode=SelectSelectorMode.DROPDOWN
+        )
+    )
+
+
+def _any_number() -> NumberSelector:
+    return NumberSelector(NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any"))
+
+
+def _gradient_fields() -> dict[Any, Any]:
+    """Gradient settings; a custom gradient's stops are edited in the panel."""
+    return {
+        vol.Optional(CONF_GRADIENT): _select(GRADIENTS, CONF_GRADIENT),
+        vol.Optional(CONF_GRADIENT_MIN): _any_number(),
+        vol.Optional(CONF_GRADIENT_MAX): _any_number(),
+    }
 
 
 class AwtrixStudioConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -254,6 +292,26 @@ class _LiveSubentryFlow(ConfigSubentryFlow):
             return "invalid_pages", str(err)
         return None
 
+    def _check_gradient(self, data: dict[str, Any], errors: dict[str, str]) -> None:
+        """Check the gradient settings and keep only what describes it."""
+        data.setdefault(CONF_GRADIENT, DEFAULT_GRADIENT)
+        if data[CONF_GRADIENT] == GRADIENT_CUSTOM:
+            stops = None if self._is_new else self._current.get(CONF_GRADIENT_STOPS)
+            if not stops:
+                errors[CONF_GRADIENT] = "custom_in_panel"
+                return
+            data[CONF_GRADIENT_STOPS] = stops
+        try:
+            resolved = resolve_stops(data)
+        except InvalidGradientError as err:
+            field = err.field if err.field != CONF_GRADIENT_STOPS else CONF_GRADIENT
+            errors[field] = err.key
+            return
+        if data[CONF_GRADIENT] == GRADIENT_CUSTOM:
+            data[CONF_GRADIENT_STOPS] = stops_to_data(resolved)
+        else:
+            data.pop(CONF_GRADIENT_STOPS, None)
+
     def _show(
         self,
         step_id: str,
@@ -308,10 +366,15 @@ class AppSubentryFlow(_LiveSubentryFlow):
         if user_input is not None:
             data = {CONF_MODE: MODE_SIMPLE, **user_input}
             self._check_name(data, errors)
+            data[CONF_COLOR_MODE] = app_color_mode(data)
+            if data[CONF_COLOR_MODE] == COLOR_GRADIENT:
+                self._check_gradient(data, errors)
             for threshold, color in (
                 (CONF_THRESHOLD_1, CONF_COLOR_1),
                 (CONF_THRESHOLD_2, CONF_COLOR_2),
             ):
+                if data[CONF_COLOR_MODE] != COLOR_STEPS:
+                    break
                 if data.get(threshold) is not None and not data.get(color):
                     errors[color] = "color_required"
             if not errors:
@@ -331,14 +394,14 @@ class AppSubentryFlow(_LiveSubentryFlow):
                 ),
                 vol.Required(CONF_SHOW_UNIT, default=True): BooleanSelector(),
                 vol.Required(CONF_HIDE_WHEN_ZERO, default=False): BooleanSelector(),
-                vol.Optional(CONF_THRESHOLD_1): NumberSelector(
-                    NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
+                vol.Optional(CONF_COLOR_MODE): _select(
+                    APP_COLOR_MODES, CONF_COLOR_MODE
                 ),
+                vol.Optional(CONF_THRESHOLD_1): _any_number(),
                 vol.Optional(CONF_COLOR_1): ColorRGBSelector(),
-                vol.Optional(CONF_THRESHOLD_2): NumberSelector(
-                    NumberSelectorConfig(mode=NumberSelectorMode.BOX, step="any")
-                ),
+                vol.Optional(CONF_THRESHOLD_2): _any_number(),
                 vol.Optional(CONF_COLOR_2): ColorRGBSelector(),
+                **_gradient_fields(),
             }
         )
         return self._show("simple", schema, user_input, errors)
@@ -419,6 +482,9 @@ class IndicatorSubentryFlow(_LiveSubentryFlow):
         if user_input is not None:
             data = {CONF_MODE: MODE_SIMPLE, **user_input}
             self._check_indicator(data, errors)
+            data[CONF_COLOR_MODE] = indicator_color_mode(data)
+            if data[CONF_COLOR_MODE] == COLOR_GRADIENT:
+                self._check_gradient(data, errors)
             if not errors:
                 return self._save_indicator(data)
 
@@ -426,12 +492,16 @@ class IndicatorSubentryFlow(_LiveSubentryFlow):
             {
                 **self._indicator_field(),
                 vol.Required(CONF_ENTITY_ID): EntitySelector(),
+                vol.Optional(CONF_COLOR_MODE): _select(
+                    INDICATOR_COLOR_MODES, "indicator_color_mode"
+                ),
                 vol.Required(
                     CONF_ACTIVE_STATE, default=DEFAULT_ACTIVE_STATE
                 ): TextSelector(),
                 vol.Required(
                     CONF_COLOR, default=DEFAULT_INDICATOR_COLOR
                 ): ColorRGBSelector(),
+                **_gradient_fields(),
                 vol.Required(CONF_EFFECT, default=EFFECT_NONE): SelectSelector(
                     SelectSelectorConfig(
                         options=list(EFFECTS),

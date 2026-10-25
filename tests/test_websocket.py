@@ -365,3 +365,83 @@ async def test_admin_only(
     response = await client.receive_json()
     assert not response["success"]
     assert response["error"]["code"] == "unauthorized"
+
+
+async def test_save_gradients(
+    hass: HomeAssistant,
+    hass_ws_client: WebSocketGenerator,
+    entry: MockConfigEntry,
+    mqtt_mock: MqttMockHAClient,
+) -> None:
+    """Gradients are validated and stored with only what describes them."""
+    hass.states.async_set("sensor.co2", "950", {"unit_of_measurement": "ppm"})
+    hass.states.async_set("sensor.grid", "1.75")
+    client = await hass_ws_client(hass)
+
+    async def save(kind: str, data: dict[str, Any]) -> dict[str, Any]:
+        await client.send_json_auto_id(
+            {
+                "type": "awtrix_studio/save",
+                "entry_id": entry.entry_id,
+                "kind": kind,
+                "data": data,
+            }
+        )
+        response = await client.receive_json()
+        assert response["success"], response
+        return response["result"]
+
+    app = {
+        "mode": "simple",
+        "app_name": "co2",
+        "entity_id": "sensor.co2",
+        "color": "#ffffff",
+        "color_mode": "gradient",
+        "gradient": "high_bad",
+        "gradient_min": 400,
+        "gradient_max": "",
+        "gradient_stops": [{"value": "<script>", "color": "x"}],
+        "threshold_1": 800,
+    }
+    assert (await save("app", app))["errors"] == {
+        "gradient_max": "gradient_range_required"
+    }
+    result = await save("app", {**app, "gradient_max": 1500})
+    await hass.async_block_till_done()
+    data = entry.subentries[result["subentry_id"]].data
+    assert data["gradient"] == "high_bad"
+    assert (data["gradient_min"], data["gradient_max"]) == (400, 1500)
+    assert "gradient_stops" not in data
+    assert "threshold_1" not in data
+    assert json.loads(published(mqtt_mock, f"{PREFIX}/custom/co2")[-1]) == {
+        "text": "950 ppm",
+        "color": [255, 200, 0],
+    }
+
+    indicator = {
+        "mode": "simple",
+        "indicator": "1",
+        "entity_id": "sensor.grid",
+        "color_mode": "gradient",
+        "gradient": "custom",
+        "gradient_stops": [
+            {"value": 3, "color": "#ff0000"},
+            {"value": 0.5, "color": "#ffff00"},
+        ],
+        "effect": "none",
+    }
+    assert (await save("indicator", indicator))["errors"] == {
+        "gradient_stops": "stops_not_increasing"
+    }
+    indicator["gradient_stops"].reverse()
+    result = await save("indicator", indicator)
+    await hass.async_block_till_done()
+    data = entry.subentries[result["subentry_id"]].data
+    assert data["gradient_stops"] == [
+        {"value": 0.5, "color": [255, 255, 0]},
+        {"value": 3.0, "color": [255, 0, 0]},
+    ]
+    assert "active_state" not in data
+    assert json.loads(published(mqtt_mock, f"{PREFIX}/indicator1")[-1]) == {
+        "color": [255, 128, 0]
+    }

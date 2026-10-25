@@ -37,7 +37,14 @@
         "app_name_exists": "This clock already has an app with this name.",
         "color_required": "Pick the color to use above this threshold.",
         "invalid_template": "The template could not be rendered: {error}",
-        "invalid_pages": "The template must render a JSON object (one page) or a list of objects (several pages): {error}"
+        "invalid_pages": "The template must render a JSON object (one page) or a list of objects (several pages): {error}",
+        "gradient_range_required": "Enter the minimum and the maximum of the gradient.",
+        "invalid_range": "The maximum must be greater than the minimum.",
+        "invalid_stops": "A custom gradient needs 2 to 5 points, each with a value and a color.",
+        "stops_not_increasing": "The points of the gradient must go from the smallest value to the largest.",
+        "custom_in_panel": "Custom gradients are edited in the Awtrix Studio panel (sidebar). Pick a preset here.",
+        "invalid_value": "Invalid value.",
+        "invalid_color": "Invalid color."
       },
       "step": {
         "user": {
@@ -71,7 +78,11 @@
             "threshold_1": "Above",
             "color_1": "Color above the first threshold",
             "threshold_2": "Then above",
-            "color_2": "Color above the second threshold"
+            "color_2": "Color above the second threshold",
+            "color_mode": "Color according to the value",
+            "gradient": "Gradient",
+            "gradient_min": "Gradient minimum",
+            "gradient_max": "Gradient maximum"
           },
           "data_description": {
             "app_name": "Name of the app on the clock. It cannot be changed later.",
@@ -79,7 +90,11 @@
             "icon": "LaMetric icon ID (for example `2422`) or name of an icon file stored on the clock.",
             "decimals": "Leave empty to show the value as is.",
             "threshold_1": "Optional. Above this value, the text takes the first threshold's color.",
-            "threshold_2": "Optional. Above this value, the text takes the second threshold's color."
+            "threshold_2": "Optional. Above this value, the text takes the second threshold's color.",
+            "color_mode": "Fixed: always the text color. Steps: thresholds below. Gradient: the color changes smoothly between the minimum and the maximum.",
+            "gradient": "Used in gradient mode. Custom gradients are edited in the panel.",
+            "gradient_min": "At or below this value, the gradient's first color.",
+            "gradient_max": "At or above this value, the gradient's last color."
           }
         },
         "template": {
@@ -116,14 +131,21 @@
       "error": {
         "indicator_in_use": "This indicator is already configured.",
         "invalid_template": "The template could not be rendered: {error}",
-        "invalid_pages": "The template must render a JSON object, or an empty object to turn the indicator off: {error}"
+        "invalid_pages": "The template must render a JSON object, or an empty object to turn the indicator off: {error}",
+        "gradient_range_required": "Enter the minimum and the maximum of the gradient.",
+        "invalid_range": "The maximum must be greater than the minimum.",
+        "invalid_stops": "A custom gradient needs 2 to 5 points, each with a value and a color.",
+        "stops_not_increasing": "The points of the gradient must go from the smallest value to the largest.",
+        "custom_in_panel": "Custom gradients are edited in the Awtrix Studio panel (sidebar). Pick a preset here.",
+        "invalid_value": "Invalid value.",
+        "invalid_color": "Invalid color."
       },
       "step": {
         "user": {
           "title": "Add an indicator",
           "description": "Indicators are the colored pixels on the right edge of the screen. How do you want to drive this one?",
           "menu_options": {
-            "simple": "Simple: lit while an entity is in a given state",
+            "simple": "Simple: lit in a given state, or a color that follows a value",
             "template": "Template: color computed by a template"
           }
         },
@@ -137,18 +159,24 @@
         },
         "simple": {
           "title": "Simple indicator",
-          "description": "The indicator lights up while the entity is in the chosen state, and turns off otherwise.",
+          "description": "Lit with a color while the entity is in the chosen state, or with a color that follows its value. Off while the entity is unavailable.",
           "data": {
             "indicator": "Indicator",
             "entity_id": "Entity",
             "active_state": "Lit when the state is",
             "color": "Color",
             "effect": "Effect",
-            "effect_interval": "Effect speed"
+            "effect_interval": "Effect speed",
+            "color_mode": "How the indicator lights up",
+            "gradient": "Gradient",
+            "gradient_min": "Gradient minimum",
+            "gradient_max": "Gradient maximum"
           },
           "data_description": {
             "active_state": "For example `on`, `open` or `home`.",
-            "effect_interval": "Duration of one blink or fade cycle."
+            "effect_interval": "Duration of one blink or fade cycle.",
+            "color_mode": "In a state: lit with the color below while the entity is in that state. Gradient: always lit, with a color that follows the entity's value.",
+            "gradient": "Used in gradient mode. Custom gradients are edited in the panel."
           }
         },
         "template": {
@@ -193,6 +221,28 @@
         "none": "Steady",
         "blink": "Blink",
         "fade": "Fade"
+      }
+    },
+    "color_mode": {
+      "options": {
+        "fixed": "Fixed",
+        "steps": "Steps",
+        "gradient": "Gradient"
+      }
+    },
+    "indicator_color_mode": {
+      "options": {
+        "state": "Lit in a given state",
+        "gradient": "Color follows the value"
+      }
+    },
+    "gradient": {
+      "options": {
+        "high_bad": "The higher, the worse (green → yellow → red)",
+        "low_bad": "The lower, the worse (red → yellow → green)",
+        "middle_good": "Best in the middle (red → green → red)",
+        "cold_hot": "Cold → hot (blue → white → orange → red)",
+        "custom": "Custom"
       }
     }
   },
