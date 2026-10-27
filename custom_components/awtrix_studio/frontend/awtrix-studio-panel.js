@@ -17,6 +17,13 @@ const LAMETRIC_THUMB = "https://developer.lametric.com/content/apps/icon_thumbs/
 const ICON_SEARCH_DEBOUNCE = 400;
 const MIRROR_STALE_MS = 5000;
 
+// A simple app shows up to MAX_SEGMENTS entities on one line. The form holds
+// the one being edited at its top level (so every field works unchanged) and
+// all of them in `segments`.
+const MAX_SEGMENTS = 5;
+const SEGMENT_KEYS = ["entity_id", "label", "color", "decimals", "show_unit", "hide_when_zero", "threshold_1", "color_1",
+  "threshold_2", "color_2", "color_mode", "gradient", "_presetTouched", "gradient_min", "gradient_max", "gradient_stops"];
+
 // AWTRIX 3 background effects, palettes and weather overlays.
 const EFFECTS = ["BrickBreaker", "Checkerboard", "ColorWaves", "Fade", "Fireworks", "LookingEyes", "Matrix", "MovingLine", "Pacifica",
   "PingPong", "Plasma", "PlasmaCloud", "Radar", "Ripple", "Snake", "SwirlIn", "SwirlOut", "TheaterChase", "TwinklingStars"];
@@ -203,6 +210,8 @@ dd { margin: 2px 0 0; font-weight: 500; }
 .tabs { display: inline-flex; border: 1px solid var(--divider-color, #c4c7cc); border-radius: 20px; overflow: hidden; align-self: flex-start; }
 .tabs button { font: inherit; font-size: 14px; font-weight: 500; padding: 8px 18px; border: none; background: none; color: inherit; cursor: pointer; min-height: 40px; }
 .tabs button[aria-selected="true"] { background: rgba(3,169,244,.18); color: var(--primary-color, #0277bd); }
+.segment-tabs { max-width: 100%; overflow-x: auto; }
+.segment-tabs button { white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field.wide { grid-column: 1 / -1; }
@@ -984,16 +993,15 @@ class AwtrixStudioPanel extends HTMLElement {
   _initialForm(kind, item, presetIndicator) {
     const d = item ? item.data : {};
     if (kind === "app") {
+      const segments = [d, ...(Array.isArray(d.segments) ? d.segments : [])].map((s) => this._segmentForm(s));
       return {
         mode: d.mode || "simple",
         app_name: d.app_name || "",
-        entity_id: d.entity_id || "",
-        label: d.label || "",
+        ...segments[0],
+        segments,
+        segment: 0,
+        separator: typeof d.separator === "string" ? d.separator : " ",
         icon: d.icon || "",
-        color: toHex(d.color, "#FFFFFF"),
-        decimals: d.decimals ?? "",
-        show_unit: d.show_unit ?? true,
-        hide_when_zero: d.hide_when_zero ?? false,
         progress: d.progress ?? false,
         progress_entity: d.progress_entity || "",
         progress_min: d.progress_min ?? 0,
@@ -1001,12 +1009,6 @@ class AwtrixStudioPanel extends HTMLElement {
         progress_same_color: !d.progress_color,
         progress_color: toHex(d.progress_color, "#4FC3F7"),
         progress_bg: toHex(d.progress_bg, "#2E2E2E"),
-        threshold_1: d.threshold_1 ?? "",
-        color_1: toHex(d.color_1, "#FFB74D"),
-        threshold_2: d.threshold_2 ?? "",
-        color_2: toHex(d.color_2, "#FF6B5B"),
-        color_mode: d.color_mode || (d.threshold_1 != null || d.threshold_2 != null ? "steps" : "fixed"),
-        ...this._gradientForm(d),
         template: d.template || (this._isNG() ? NG_STARTER_APP_TEMPLATE : STARTER_APP_TEMPLATE),
         page_interval: d.page_interval ?? 1.5,
         cycle_only_on_screen: d.cycle_only_on_screen ?? true,
@@ -1029,6 +1031,56 @@ class AwtrixStudioPanel extends HTMLElement {
       ...this._gradientForm(d),
       template: d.template || (this._isNG() ? NG_STARTER_INDICATOR_TEMPLATE : STARTER_INDICATOR_TEMPLATE),
     };
+  }
+
+  /** The fields of one entity of a simple app. */
+  _segmentForm(d) {
+    return {
+      entity_id: d.entity_id || "",
+      label: d.label || "",
+      color: toHex(d.color, "#FFFFFF"),
+      decimals: d.decimals ?? "",
+      show_unit: d.show_unit ?? true,
+      hide_when_zero: d.hide_when_zero ?? false,
+      threshold_1: d.threshold_1 ?? "",
+      color_1: toHex(d.color_1, "#FFB74D"),
+      threshold_2: d.threshold_2 ?? "",
+      color_2: toHex(d.color_2, "#FF6B5B"),
+      color_mode: d.color_mode || (d.threshold_1 != null || d.threshold_2 != null ? "steps" : "fixed"),
+      ...this._gradientForm(d),
+    };
+  }
+
+  /** Store the entity being edited back into the list. */
+  _syncSegment() {
+    const f = this._form;
+    SEGMENT_KEYS.forEach((key) => { f.segments[f.segment][key] = f[key]; });
+  }
+
+  _selectSegment(index) {
+    const f = this._form;
+    this._syncSegment();
+    f.segment = index;
+    SEGMENT_KEYS.forEach((key) => { f[key] = f.segments[index][key]; });
+    this._renderFields();
+  }
+
+  _addSegment() {
+    this._syncSegment();
+    this._form.segments.push(this._segmentForm({}));
+    this._selectSegment(this._form.segments.length - 1);
+    this._fieldsBox.querySelector("#f-entity_id")?.focus();
+    this._schedulePreview();
+  }
+
+  _removeSegment() {
+    const f = this._form;
+    f.segments.splice(f.segment, 1);
+    const index = Math.min(f.segment, f.segments.length - 1);
+    f.segment = index;
+    SEGMENT_KEYS.forEach((key) => { f[key] = f.segments[index][key]; });
+    this._renderFields();
+    this._schedulePreview();
   }
 
   _gradientForm(d) {
@@ -1103,8 +1155,7 @@ class AwtrixStudioPanel extends HTMLElement {
     return payload;
   }
 
-  _gradientPayload() {
-    const f = this._form;
+  _gradientPayload(f = this._form) {
     if (f.color_mode !== "gradient") return { color_mode: f.color_mode };
     if (f.gradient === "custom") {
       return { color_mode: "gradient", gradient: "custom",
@@ -1113,15 +1164,21 @@ class AwtrixStudioPanel extends HTMLElement {
     return { color_mode: "gradient", gradient: f.gradient, gradient_min: numberOrEmpty(f.gradient_min), gradient_max: numberOrEmpty(f.gradient_max) };
   }
 
+  _segmentPayload(s) {
+    return { entity_id: s.entity_id, label: s.label, color: s.color, decimals: numberOrEmpty(s.decimals),
+      show_unit: s.show_unit, hide_when_zero: s.hide_when_zero,
+      threshold_1: numberOrEmpty(s.threshold_1), color_1: s.color_1, threshold_2: numberOrEmpty(s.threshold_2), color_2: s.color_2,
+      ...this._gradientPayload(s) };
+  }
+
   _payload() {
     const f = this._form;
     const { kind } = this._view;
     if (kind === "app" && f.mode === "simple") {
-      return { mode: "simple", app_name: f.app_name, entity_id: f.entity_id, label: f.label, icon: f.icon, color: f.color,
-        decimals: numberOrEmpty(f.decimals), show_unit: f.show_unit, hide_when_zero: f.hide_when_zero,
-        ...this._progressPayload(),
-        threshold_1: numberOrEmpty(f.threshold_1), color_1: f.color_1, threshold_2: numberOrEmpty(f.threshold_2), color_2: f.color_2,
-        ...this._gradientPayload(), display: this._displayPayload() };
+      this._syncSegment();
+      const [first, ...next] = f.segments.map((s) => this._segmentPayload(s));
+      return { mode: "simple", app_name: f.app_name, ...first, segments: next, separator: f.separator, icon: f.icon,
+        ...this._progressPayload(), display: this._displayPayload() };
     }
     if (kind === "app") {
       return { mode: "template", app_name: f.app_name, template: f.template, page_interval: numberOrEmpty(f.page_interval),
@@ -1253,19 +1310,20 @@ class AwtrixStudioPanel extends HTMLElement {
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#0b0b0d";
     ctx.fillRect(0, 0, 8, 8);
-    const match = /^lametric:(\d{1,7})$/.exec(this._form.icon || "");
+    // A bare number is a LaMetric icon too, unless the clock has that file.
+    const value = this._form.icon || "";
+    const match = /^(?:lametric:)?(\d{1,7})$/.exec(value);
     canvas.title = match ? "" : this.t("icon_on_clock");
     if (!match) {
-      (clockIcon(this._form.icon, () => this._drawIconPreview()) || []).forEach((color, i) => {
+      (clockIcon(value, () => this._drawIconPreview()) || []).forEach((color, i) => {
         if (!color) return;
         ctx.fillStyle = color;
         ctx.fillRect(i % 8, Math.floor(i / 8), 1, 1);
       });
       return;
     }
-    const id = Number(match[1]);
-    const pixels = await this._iconPixels(id);
-    if (!pixels || this._form.icon !== `lametric:${id}`) return;
+    const pixels = await this._iconPixels(Number(match[1]));
+    if (!pixels || this._form.icon !== value) return;
     pixels.forEach((value, i) => {
       if (!Number.isInteger(value) || value <= 0) return;
       ctx.fillStyle = parseColor(value);
@@ -1420,17 +1478,15 @@ class AwtrixStudioPanel extends HTMLElement {
       return;
     }
 
-    box.append(this._field("entity_id", this.t("entity"), this._entityInput(), null, true));
     if (kind === "app") {
-      box.append(
-        this._field("label", this.t("label"), this._input("label", "text", { maxlength: 64 }), this.t("label_help")),
-        this._iconField(),
-        this._field("color", this.t("text_color"), this._input("color", "color")),
-        this._field("decimals", this.t("decimals"), this._input("decimals", "number", { min: 0, max: 4, step: 1 }), this.t("decimals_help")),
-        this._check("show_unit", this.t("show_unit")),
-        this._check("hide_when_zero", this.t("hide_when_zero")));
-      box.append(this._colorSection(["fixed", "steps", "gradient"], "color_by_value"), this._progressSection(), this._displaySection());
+      box.append(this._segmentsSection(), this._iconField());
+      if (f.segments.length > 1) {
+        box.append(this._field("separator", this.t("separator"), this._input("separator", "text", { maxlength: 8, spellcheck: "false" }),
+          this.t("separator_help")));
+      }
+      box.append(this._progressSection(), this._displaySection());
     } else {
+      box.append(this._field("entity_id", this.t("entity"), this._entityInput(), null, true));
       const effect = h("select", { id: "f-effect", onChange: (e) => { f.effect = e.target.value; this._schedulePreview(); } },
         ...["none", "blink", "fade"].map((v) => h("option", { value: v }, this.t(`effect_${v}`))));
       effect.value = f.effect;
@@ -1439,6 +1495,41 @@ class AwtrixStudioPanel extends HTMLElement {
         this._field("effect", this.t("effect"), effect),
         this._field("effect_interval", this.t("effect_interval"), this._input("effect_interval", "number", { min: 100, max: 10000, step: 100 })));
     }
+  }
+
+  // ------------------------------------------------- entities of a line
+
+  /** The entities of a simple app: tabs to pick one, and its fields. */
+  _segmentsSection() {
+    const f = this._form;
+    const many = f.segments.length > 1;
+    const name = (s, i) => s.label || s.entity_id.split(".").pop() || this.t("segment_n", { n: i + 1 });
+    const fieldset = h("fieldset", { class: "field wide" }, h("legend", {}, this.t(many ? "entities_line" : "entity")));
+    if (many) {
+      const tabs = h("div", { class: "tabs segment-tabs", role: "tablist", "aria-label": this.t("entities_line") });
+      f.segments.forEach((s, i) => tabs.append(h("button", { role: "tab", type: "button", "aria-selected": i === f.segment ? "true" : "false",
+        onClick: () => { if (i !== f.segment) this._selectSegment(i); } }, `${i + 1}. ${name(s, i)}`)));
+      // Tab names follow what is typed, without rebuilding the form.
+      fieldset.addEventListener("input", () => {
+        this._syncSegment();
+        tabs.children[f.segment].textContent = `${f.segment + 1}. ${name(f.segments[f.segment], f.segment)}`;
+      });
+      fieldset.append(tabs);
+      if (this._isNG()) fieldset.append(h("div", { class: "muted" }, this.t("segments_ng_note")));
+    }
+    fieldset.append(h("div", { class: "fields" },
+      this._field("entity_id", this.t("entity"), this._entityInput(), null, true),
+      this._field("label", this.t("label"), this._input("label", "text", { maxlength: 64 }), this.t("label_help")),
+      this._field("color", this.t("text_color"), this._input("color", "color")),
+      this._field("decimals", this.t("decimals"), this._input("decimals", "number", { min: 0, max: 4, step: 1 }), this.t("decimals_help")),
+      this._check("show_unit", this.t("show_unit")),
+      this._check("hide_when_zero", this.t("hide_when_zero"), many ? this.t("hide_when_zero_segment") : null),
+      this._colorSection(["fixed", "steps", "gradient"], "color_by_value")));
+    fieldset.append(h("div", { class: "row" },
+      f.segments.length < MAX_SEGMENTS
+        ? h("button", { class: "btn small", type: "button", onClick: () => this._addSegment() }, icon("plus"), this.t("add_segment")) : null,
+      many ? h("button", { class: "btn small", type: "button", onClick: () => this._removeSegment() }, this.t("remove_segment")) : null));
+    return fieldset;
   }
 
   // ---------------------------------------------------- display options
@@ -1833,10 +1924,21 @@ class AwtrixStudioPanel extends HTMLElement {
   }
 
   _showErrors(errors, detail) {
+    // An error about one entity of a line opens that entity first; the app's
+    // own fields describe the first one, the others are `segments.<i>.<field>`.
+    const f = this._form;
+    const entries = Object.entries(errors || {}).map(([field, key]) => {
+      const match = /^segments\.(\d+)\.(.+)$/.exec(field);
+      if (match) return { segment: Number(match[1]) + 1, field: match[2], key };
+      const segment = f.segments && SEGMENT_KEYS.includes(field) ? 0 : null;
+      return { segment, field, key };
+    });
+    const inSegment = entries.find((e) => e.segment !== null);
+    if (inSegment && !entries.some((e) => e.segment === f.segment)) this._selectSegment(inSegment.segment);
     Object.values(this._errors).forEach((el) => { el.textContent = ""; });
     let shown = false;
-    Object.entries(errors || {}).forEach(([field, key]) => {
-      const target = this._errors[field];
+    entries.forEach(({ segment, field, key }) => {
+      const target = segment === null || segment === f.segment ? this._errors[field] : null;
       const text = this.t(`errors.${key}`) + (detail && (key === "invalid_template" || key === "invalid_pages") ? ` ${detail}` : "");
       if (target) {
         target.textContent = text;

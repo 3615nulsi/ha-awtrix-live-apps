@@ -51,6 +51,15 @@ CONF_COLOR_2: Final = "color_2"
 
 DEFAULT_COLOR: Final = [255, 255, 255]
 
+# Simple mode, more entities on the same line. The app's own fields describe
+# the first one, so that items stored before segments existed still read as
+# a single entity; `segments` lists the next ones, with the same fields.
+CONF_SEGMENTS: Final = "segments"
+CONF_SEPARATOR: Final = "separator"
+DEFAULT_SEPARATOR: Final = " "
+MAX_SEGMENTS: Final = 5
+MAX_SEPARATOR: Final = 8
+
 # How the color is chosen (apps: fixed, steps or gradient; indicators: lit in
 # a state, or gradient). Missing on items created before 0.4: inferred.
 CONF_COLOR_MODE: Final = "color_mode"

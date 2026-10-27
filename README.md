@@ -72,12 +72,13 @@ Choose an entity, add a label, an icon and colors, and you're done. The preview 
 |---|---|
 | **Entity** | The sensor (or any entity) to show. |
 | **Label** | Optional text before the value, like `CO2`. |
-| **Icon** | **Pick an icon** searches the [LaMetric gallery](https://developer.lametric.com/icons); Awtrix Studio sends it with the app (animated icons are stored on the clock automatically, so that they play). You can also type the name of an icon stored on the clock. |
+| **Icon** | **Pick an icon** searches the [LaMetric gallery](https://developer.lametric.com/icons); Awtrix Studio sends it with the app (animated icons are stored on the clock automatically, so that they play). Typing an icon's number works too, and a file of the clock with that name wins. You can also type the name of an icon stored on the clock. |
 | **Text color** | The default color. |
 | **Decimals** | Round the value, or leave empty to show it as is. |
 | **Show the unit** | Adds `°C`, `%`, `kW`… after the value. |
 | **Hide when the value is 0** | Handy for solar production at night. |
 | **Progress bar** | A bar at the bottom of the screen, from the app's entity or another one, empty and full at the values you choose. It can follow the text color. |
+| **Add an entity** | Shows several entities on the same line, like `UP 750 DN 30`. Each one has its own label, decimals, unit and color (fixed, steps or gradient); a tab per entity switches between them, and a **separator** goes between two. An entity without a value leaves the line, and the app leaves the rotation when none is left. On AWTRIX NG the whole line takes the color of the first entity. |
 | **Color according to the value** | **Fixed**, **steps** (up to two thresholds, each with its color), or a **gradient**: pick a ready-made one (*the higher, the worse*, *the lower, the worse*, *best in the middle*, *cold → hot*) and set its range, or make your own with 2 to 5 points. For temperatures, CO2, humidity or batteries, a sensible range is suggested. |
 
 The app also leaves the rotation by itself while its entity is unavailable.
@@ -187,7 +188,7 @@ Blue while exporting, green to red while importing. Simple mode gets close with 
 ```
 </details>
 
-Every key of the clock's API works: the [AWTRIX 3 custom apps](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) (`text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`…) or the [AWTRIX NG pushed apps](https://github.com/Blueforcer/awtrix-ng/blob/main/docs/reference/payload.md) (`text`, `textColor`, `icon`, `draw`, `progress`, `textBlinkMs`, `effect`…). Write `"icon": "lametric:2422"` to use an icon of the LaMetric gallery without uploading it to the clock.
+Every key of the clock's API works: the [AWTRIX 3 custom apps](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) (`text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`…) or the [AWTRIX NG pushed apps](https://github.com/Blueforcer/awtrix-ng/blob/main/docs/reference/payload.md) (`text`, `textColor`, `icon`, `draw`, `progress`, `textBlinkMs`, `effect`…). Write `"icon": "2422"` to use an icon of the LaMetric gallery without uploading it to the clock (a file of the clock named `2422` wins; `"lametric:2422"` always takes the gallery's).
 
 ## ❓ FAQ
 
@@ -222,7 +223,7 @@ Yes. Awtrix Studio only touches the apps and indicators you create with it, so e
 2. Flash AWTRIX NG and switch MQTT on in the clock's web page (**System → MQTT**), with a prefix.
 3. **Add the clock** again in Awtrix Studio, with **Detect automatically**. To keep the same prefix, remove the old clock first.
 4. **Import** the file. Simple apps move as they are. Template apps are flagged: rewrite them with NG's keys (see [Template examples](#-template-examples)); if the clock refuses one, the panel names the key.
-5. Icons named by a number were files on the clock, which flashing NG erased: name them `lametric:<number>` instead, and Awtrix Studio sends them along with the app.
+5. Icons named by a number were files on the clock, which flashing NG erased: Awtrix Studio now sends the LaMetric icon of that number along with the app.
 6. Once everything runs, remove the old clock if it is still there.
 </details>
 

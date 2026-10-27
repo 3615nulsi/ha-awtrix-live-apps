@@ -63,6 +63,7 @@ class ClockFiles:
         self.address: str | None = None
         self._present: set[str] | None = None
         self._failed_at: dict[str, float] = {}
+        self._list_failed_at: float | None = None
         self._warned = False
 
     @property
@@ -77,7 +78,29 @@ class ClockFiles:
         self.address = address
         self._present = None
         self._failed_at.clear()
+        self._list_failed_at = None
         return True
+
+    async def async_has(self, name: str) -> bool | None:
+        """Return True if an icon file `<name>.*` is on the clock.
+
+        None when the clock's files cannot be listed.
+        """
+        if not self.supported:
+            return None
+        if self._present is None:
+            failed_at = self._list_failed_at
+            if (
+                failed_at is not None
+                and self.hass.loop.time() - failed_at < RETRY_AFTER
+            ):
+                return None
+            try:
+                self._present = await self._async_list()
+            except (aiohttp.ClientError, TimeoutError, ValueError):
+                self._list_failed_at = self.hass.loop.time()
+                return None
+        return any(filename.rsplit(".", 1)[0] == name for filename in self._present)
 
     async def async_ensure(self, name: str, data: bytes, extension: str) -> bool:
         """Make sure `<name>.<extension>` is on the clock; return True if it is."""

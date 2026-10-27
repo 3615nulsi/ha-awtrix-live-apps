@@ -40,6 +40,8 @@ from .const import (
     CONF_PROGRESS_ENTITY,
     CONF_PROGRESS_MAX,
     CONF_PROGRESS_MIN,
+    CONF_SEGMENTS,
+    CONF_SEPARATOR,
     CONF_SHOW_UNIT,
     CONF_THRESHOLD_1,
     CONF_THRESHOLD_2,
@@ -50,6 +52,7 @@ from .const import (
     DEFAULT_PROGRESS_BG,
     DEFAULT_PROGRESS_MAX,
     DEFAULT_PROGRESS_MIN,
+    DEFAULT_SEPARATOR,
     EFFECT_NONE,
     EFFECTS,
     FIRMWARE_AWTRIX3,
@@ -166,17 +169,20 @@ def _gradient_lines(options: Mapping[str, Any]) -> list[str]:
         raise InvalidSimpleOptionsError(str(err)) from err
 
 
+def app_segments(options: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The entities of a simple app: its own first, then the next segments."""
+    extra = options.get(CONF_SEGMENTS) or []
+    return [options, *(s for s in extra if isinstance(s, Mapping))]
+
+
 def build_app_template(
     options: Mapping[str, Any], firmware: str = FIRMWARE_AWTRIX3
 ) -> str:
-    """Template for a simple app: one entity shown as text with an icon."""
+    """Template for a simple app: entities shown as text, with an icon."""
+    if len(app_segments(options)) > 1:
+        return _build_line_template(options, firmware)
     keys = _keys(firmware)
     entity = _entity_id(options.get(CONF_ENTITY_ID))
-    label = str(options.get(CONF_LABEL) or "").strip()
-    icon = str(options.get(CONF_ICON) or "").strip()
-    color = rgb_to_hex(options.get(CONF_COLOR), DEFAULT_COLOR)
-    decimals = options.get(CONF_DECIMALS)
-    show_unit = options.get(CONF_SHOW_UNIT, True)
     hide_zero = options.get(CONF_HIDE_WHEN_ZERO, False)
 
     lines = [
@@ -189,7 +195,63 @@ def build_app_template(
     if hide_zero:
         lines += ["{%- elif num is not none and num == 0 -%}", "[]"]
     lines.append("{%- else -%}")
+    lines += _text_lines(options)
+    lines += _payload_lines(options, entity, keys, "text")
+    return "\n".join(lines)
 
+
+def _build_line_template(options: Mapping[str, Any], firmware: str) -> str:
+    """Several entities on one line, each in its own color.
+
+    An entity without a value (or at 0, when asked) leaves the line; the app
+    is hidden when none is left.
+    """
+    keys = _keys(firmware)
+    segments = app_segments(options)
+    separator = options.get(CONF_SEPARATOR)
+    if not isinstance(separator, str):
+        separator = DEFAULT_SEPARATOR
+    lines = [HEADER, "{%- set parts = [] -%}"]
+    for number, segment in enumerate(segments, 1):
+        entity = _entity_id(segment.get(CONF_ENTITY_ID))
+        shown = "raw not in ['unknown', 'unavailable', '']"
+        if segment.get(CONF_HIDE_WHEN_ZERO, False):
+            shown += " and not (num is not none and num == 0)"
+        lines += [
+            f"{{#- Entity {number}: {entity} -#}}",
+            f"{{%- set raw = states({jinja_str(entity)}) -%}}",
+            "{%- set num = raw | float if raw | is_number else none -%}",
+            f"{{%- if {shown} -%}}",
+            *_text_lines(segment),
+            f'{{%- set parts = parts + [{{"t": ({jinja_str(separator)}'
+            ' if parts else "") ~ text, "c": color}] -%}',
+            "{%- endif -%}",
+        ]
+    lines += ["{%- if not parts -%}", "[]", "{%- else -%}"]
+    if options.get(CONF_PROGRESS) or firmware == FIRMWARE_AWTRIX_NG:
+        # The first color paints the progress bar, as with one entity.
+        lines.append("{%- set color = parts[0].c -%}")
+    if firmware == FIRMWARE_AWTRIX_NG:
+        # Colored text fragments are not known to exist on AWTRIX NG: the
+        # line is sent as one text, in the color of its first entity.
+        lines.append("{%- set text = parts | map(attribute='t') | join -%}")
+        lines += _payload_lines(options, segments[0][CONF_ENTITY_ID], keys, "text")
+    else:
+        lines += _payload_lines(
+            options, segments[0][CONF_ENTITY_ID], keys, "parts", with_color=False
+        )
+    return "\n".join(lines)
+
+
+def _text_lines(options: Mapping[str, Any]) -> list[str]:
+    """Lines setting `text` and `color` for one entity, from `raw` and `num`."""
+    entity = _entity_id(options.get(CONF_ENTITY_ID))
+    label = str(options.get(CONF_LABEL) or "").strip()
+    color = rgb_to_hex(options.get(CONF_COLOR), DEFAULT_COLOR)
+    decimals = options.get(CONF_DECIMALS)
+    show_unit = options.get(CONF_SHOW_UNIT, True)
+
+    lines: list[str] = []
     if decimals is not None and decimals != "":
         decimals = max(0, min(MAX_DECIMALS, int(decimals)))
     if decimals is None or decimals == "":
@@ -217,19 +279,33 @@ def build_app_template(
 
     lines.append(f"{{%- set color = {jinja_str(color)} -%}}")
     lines += _color_lines(options)
+    return lines
 
-    payload = f'{{"text": text, "{keys["color"]}": color'
+
+def _payload_lines(
+    options: Mapping[str, Any],
+    entity: str,
+    keys: Mapping[str, str],
+    text: str,
+    *,
+    with_color: bool = True,
+) -> list[str]:
+    """Lines writing the page, with its icon and progress bar; ends the `if`."""
+    icon = str(options.get(CONF_ICON) or "").strip()
+    payload = f'{{"text": {text}'
+    if with_color:
+        payload += f', "{keys["color"]}": color'
     if icon:
         payload += f', "icon": {jinja_str(icon)}'
     payload += "}"
     if not options.get(CONF_PROGRESS):
-        lines += [f"{{{{ {payload} | tojson }}}}", "{%- endif -%}"]
-        return "\n".join(lines)
-
-    lines.append(f"{{%- set page = {payload} -%}}")
-    lines += _progress_lines(options, entity, keys)
-    lines += ["{{ page | tojson }}", "{%- endif -%}"]
-    return "\n".join(lines)
+        return [f"{{{{ {payload} | tojson }}}}", "{%- endif -%}"]
+    return [
+        f"{{%- set page = {payload} -%}}",
+        *_progress_lines(options, entity, keys),
+        "{{ page | tojson }}",
+        "{%- endif -%}",
+    ]
 
 
 def _color_lines(options: Mapping[str, Any]) -> list[str]:

@@ -72,12 +72,13 @@ Choisissez une entité, ajoutez un libellé, une icône et des couleurs, et c'es
 |---|---|
 | **Entité** | Le capteur (ou n'importe quelle entité) à afficher. |
 | **Libellé** | Texte facultatif avant la valeur, par exemple `CO2`. |
-| **Icône** | **Choisir une icône** cherche dans la [galerie LaMetric](https://developer.lametric.com/icons) ; Awtrix Studio l'envoie avec l'app (les icônes animées sont déposées automatiquement sur l'horloge, pour être animées). Vous pouvez aussi saisir le nom d'une icône présente sur l'horloge. |
+| **Icône** | **Choisir une icône** cherche dans la [galerie LaMetric](https://developer.lametric.com/icons) ; Awtrix Studio l'envoie avec l'app (les icônes animées sont déposées automatiquement sur l'horloge, pour être animées). Saisir le numéro d'une icône fonctionne aussi, et un fichier de l'horloge portant ce nom reste prioritaire. Vous pouvez aussi saisir le nom d'une icône présente sur l'horloge. |
 | **Couleur du texte** | La couleur par défaut. |
 | **Décimales** | Arrondit la valeur ; laissez vide pour l'afficher telle quelle. |
 | **Afficher l'unité** | Ajoute `°C`, `%`, `kW`… après la valeur. |
 | **Masquer quand la valeur vaut 0** | Pratique pour la production solaire la nuit. |
 | **Barre de progression** | Une barre en bas de l'écran, à partir de l'entité de l'app ou d'une autre, vide et pleine aux valeurs de votre choix. Elle peut suivre la couleur du texte. |
+| **Ajouter une entité** | Affiche plusieurs entités sur la même ligne, par exemple `UP 750 DN 30`. Chacune a son libellé, ses décimales, son unité et sa couleur (fixe, par paliers ou en dégradé) ; un onglet par entité permet de passer de l'une à l'autre, et un **séparateur** se place entre deux. Une entité sans valeur quitte la ligne, et l'app quitte la rotation quand il n'en reste aucune. Sur AWTRIX NG, toute la ligne prend la couleur de la première entité. |
 | **Couleur selon la valeur** | **Fixe**, par **paliers** (jusqu'à deux seuils, chacun avec sa couleur), ou en **dégradé** : choisissez-en un tout prêt (*plus c'est haut, pire c'est*, *plus c'est bas, pire c'est*, *idéal au milieu*, *froid → chaud*) et réglez ses bornes, ou créez le vôtre avec 2 à 5 points. Pour une température, du CO2, de l'humidité ou une batterie, des bornes adaptées sont proposées. |
 
 L'app quitte aussi la rotation d'elle-même tant que son entité est indisponible.
@@ -187,7 +188,7 @@ Bleu quand vous injectez, du vert au rouge quand vous consommez sur le réseau. 
 ```
 </details>
 
-Toutes les clés de l'API de l'horloge fonctionnent : celles des [apps personnalisées AWTRIX 3](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) (`text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`…) ou des [apps poussées AWTRIX NG](https://github.com/Blueforcer/awtrix-ng/blob/main/docs/reference/payload.md) (`text`, `textColor`, `icon`, `draw`, `progress`, `textBlinkMs`, `effect`…). Écrivez `"icon": "lametric:2422"` pour utiliser une icône de la galerie LaMetric sans la télécharger sur l'horloge.
+Toutes les clés de l'API de l'horloge fonctionnent : celles des [apps personnalisées AWTRIX 3](https://blueforcer.github.io/awtrix3/#/api?id=custom-apps-and-notifications) (`text`, `color`, `icon`, `draw`, `progress`, `blinkText`, `effect`…) ou des [apps poussées AWTRIX NG](https://github.com/Blueforcer/awtrix-ng/blob/main/docs/reference/payload.md) (`text`, `textColor`, `icon`, `draw`, `progress`, `textBlinkMs`, `effect`…). Écrivez `"icon": "2422"` pour utiliser une icône de la galerie LaMetric sans la télécharger sur l'horloge (un fichier de l'horloge nommé `2422` reste prioritaire ; `"lametric:2422"` prend toujours celle de la galerie).
 
 ## ❓ Questions fréquentes
 
@@ -222,7 +223,7 @@ Oui. Awtrix Studio ne touche qu'aux apps et indicateurs créés avec elle : tout
 2. Flashez AWTRIX NG et activez MQTT dans la page web de l'horloge (**System → MQTT**), avec un préfixe.
 3. **Ajoutez à nouveau l'horloge** dans Awtrix Studio, avec **Détecter automatiquement**. Pour garder le même préfixe, supprimez d'abord l'ancienne horloge.
 4. **Importez** le fichier. Les apps simples passent telles quelles. Les apps en mode modèle sont signalées : réécrivez-les avec les clés de NG (voir les [exemples de modèles](#-exemples-de-modèles)) ; si l'horloge en refuse une, le panneau indique la clé en cause.
-5. Les icônes désignées par un numéro étaient des fichiers de l'horloge, effacés par le flash de NG : écrivez plutôt `lametric:<numéro>`, et Awtrix Studio les envoie avec l'app.
+5. Les icônes désignées par un numéro étaient des fichiers de l'horloge, effacés par le flash de NG : Awtrix Studio envoie désormais l'icône LaMetric de ce numéro avec l'app.
 6. Une fois que tout fonctionne, supprimez l'ancienne horloge si elle est encore là.
 </details>
 
