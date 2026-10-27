@@ -1252,12 +1252,13 @@ class AwtrixStudioPanel extends HTMLElement {
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#0b0b0d";
     ctx.fillRect(0, 0, 8, 8);
-    const match = /^lametric:(\d{1,7})$/.exec(this._form.icon || "");
+    // A bare number is a LaMetric icon too, unless the clock has that file.
+    const value = this._form.icon || "";
+    const match = /^(?:lametric:)?(\d{1,7})$/.exec(value);
     canvas.title = match ? "" : this.t("icon_on_clock");
     if (!match) return;
-    const id = Number(match[1]);
-    const pixels = await this._iconPixels(id);
-    if (!pixels || this._form.icon !== `lametric:${id}`) return;
+    const pixels = await this._iconPixels(Number(match[1]));
+    if (!pixels || this._form.icon !== value) return;
     pixels.forEach((value, i) => {
       if (!Number.isInteger(value) || value <= 0) return;
       ctx.fillStyle = parseColor(value);

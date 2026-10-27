@@ -7,8 +7,10 @@ be uploaded to the clock first. AWTRIX 3 can only play animated icons from its
 memory: they are stored there automatically (see clock_files), with their
 first image as a fallback. AWTRIX NG plays an animated GIF sent inline.
 
-Plain icon names and numbers keep their usual meaning: a file stored on the
-clock.
+An icon named by a bare number (`2422`, as AWTRIX's own icon downloader names
+its files) is a file of the clock when the clock has one by that name, and the
+LaMetric icon of that number otherwise. Other names keep their usual meaning:
+a file stored on the clock.
 """
 
 from __future__ import annotations
@@ -33,8 +35,8 @@ from .drivers import FirmwareDriver
 
 _LOGGER = logging.getLogger(__name__)
 
-PREFIX: Final = "lametric:"
 ICON_RE: Final = re.compile(r"^lametric:(\d{1,7})$")
+NUMBER_RE: Final = re.compile(r"^\d{1,7}$")
 SEARCH_URL: Final = "https://developer.lametric.com/api/v1/dev/preloadicons"
 ICON_URL: Final = "https://developer.lametric.com/content/apps/icon_thumbs/{id}"
 STORAGE_VERSION: Final = 1
@@ -214,25 +216,30 @@ class IconStore:
     ) -> str:
         """Replace a `lametric:<id>` icon in a page payload by the icon itself.
 
+        A bare number names the same icon, unless the clock has a file by that
+        name, or the gallery does not have it: it is then left to the clock.
         Animated icons are stored on the clock (when `files` can) and named by
         their number, so that the clock plays them. Otherwise the icon is sent
         inline, in the form the firmware takes: AWTRIX NG plays an inline GIF,
         AWTRIX 3 shows the first image. An inline GIF that would make the
         payload too large for the clock falls back to the first image.
         """
-        if PREFIX not in payload:
+        if '"icon"' not in payload:
             return payload
         try:
             page = json.loads(payload)
         except ValueError:
             return payload
-        if (
-            not isinstance(page, dict)
-            or (lametric_id := icon_id(page.get("icon"))) is None
-        ):
+        if not isinstance(page, dict):
+            return payload
+        name = page.get("icon")
+        if (lametric_id := await _gallery_id(name, files)) is None:
             return payload
         icon = await self.async_get(lametric_id)
         if icon is None:
+            if icon_id(name) is None:
+                # A bare number: maybe a file the clock's listing did not show.
+                return payload
             page.pop("icon")
         elif (
             files is not None
@@ -254,6 +261,19 @@ class IconStore:
             ):
                 page["icon"] = driver.inline_icon(icon["jpeg"], None)
         return _dumps(page)
+
+
+async def _gallery_id(name: Any, files: ClockFiles | None) -> int | None:
+    """Return the LaMetric id an icon name stands for, if any."""
+    if (lametric_id := icon_id(name)) is not None:
+        return lametric_id
+    if isinstance(name, int) and not isinstance(name, bool):
+        name = str(name)
+    if not isinstance(name, str) or not NUMBER_RE.fullmatch(name):
+        return None
+    if files is not None and await files.async_has(name):
+        return None
+    return int(name)
 
 
 def _dumps(page: dict[str, Any]) -> str:

@@ -408,7 +408,7 @@ async def test_simple_app_flow_and_conversion(
     simple = {
         "app_name": "co2",
         "entity_id": "sensor.co2",
-        "icon": "43980",
+        "icon": "co2",
         "color": [136, 212, 152],
         "decimals": 0,
         "show_unit": True,
@@ -432,7 +432,7 @@ async def test_simple_app_flow_and_conversion(
     assert json.loads(payloads[0]) == {
         "text": "950 ppm",
         "color": "#FFD180",
-        "icon": "43980",
+        "icon": "co2",
     }
 
     # Editing offers to convert the app to template mode, pre-filled.

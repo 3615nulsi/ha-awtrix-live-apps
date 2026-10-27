@@ -94,7 +94,7 @@
           "data_description": {
             "app_name": "Name of the app on the clock. It cannot be changed later.",
             "label": "Text shown before the value, for example `CO2`.",
-            "icon": "`lametric:2422` for an icon of the LaMetric gallery (sent by Awtrix Studio, nothing to upload; the panel has a picker), or the name of an icon file stored on the clock.",
+            "icon": "The number of an icon of the LaMetric gallery, such as `2422` (sent by Awtrix Studio, nothing to upload, unless the clock has a file by that name; the panel has a picker), or the name of an icon file stored on the clock.",
             "decimals": "Leave empty to show the value as is.",
             "threshold_1": "Optional. Above this value, the text takes the first threshold's color.",
             "threshold_2": "Optional. Above this value, the text takes the second threshold's color.",
