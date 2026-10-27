@@ -47,6 +47,7 @@ from .const import (
     SUBENTRY_TYPE_APP,
     SUBENTRY_TYPE_INDICATOR,
 )
+from .templates import app_segments
 from .validation import Invalid, normalize
 
 FORMAT_KEY: Final = "awtrix_studio"
@@ -159,7 +160,7 @@ def _entities(hass: HomeAssistant, data: Mapping[str, Any]) -> list[str]:
     """Entities an item uses that do not exist here."""
     used: set[str] = set()
     if data.get(CONF_MODE) == MODE_SIMPLE:
-        used.add(data[CONF_ENTITY_ID])
+        used |= {segment[CONF_ENTITY_ID] for segment in app_segments(data)}
     else:
         try:
             info = Template(data[CONF_TEMPLATE], hass).async_render_to_info()

@@ -240,3 +240,84 @@ async def test_ng_templates_use_ng_keys(hass: HomeAssistant) -> None:
         "awtrix_ng",
     )
     assert render(hass, template) == [{"color": "#FF8C00", "blinkMs": 500}]
+
+
+LINE = {
+    "entity_id": "sensor.up",
+    "label": "UP",
+    "color": [0, 255, 0],
+    "decimals": 0,
+    "segments": [
+        {
+            "entity_id": "sensor.down",
+            "label": "DN",
+            "color_mode": "steps",
+            "threshold_1": 50,
+            "color_1": [255, 0, 0],
+        }
+    ],
+}
+
+
+async def test_line_of_entities(hass: HomeAssistant) -> None:
+    """Several entities share the line, each in its own color."""
+    hass.states.async_set("sensor.up", "750.2", {"unit_of_measurement": "Mbit/s"})
+    hass.states.async_set("sensor.down", "30", {})
+    template = build_app_template({**LINE, "icon": "1234"})
+    assert render(hass, template) == [
+        {
+            "text": [
+                {"t": "UP 750 Mbit/s", "c": "#00FF00"},
+                {"t": " DN 30", "c": "#FFFFFF"},
+            ],
+            "icon": "1234",
+        }
+    ]
+    hass.states.async_set("sensor.down", "80", {})
+    assert render(hass, template)[0]["text"][1] == {"t": " DN 80", "c": "#FF0000"}
+
+
+async def test_line_separator_and_missing_values(hass: HomeAssistant) -> None:
+    """An entity without a value leaves the line; none left hides the app."""
+    options = {
+        **LINE,
+        "show_unit": False,
+        "separator": " | ",
+        "segments": [{**LINE["segments"][0], "hide_when_zero": True}],
+    }
+    template = build_app_template(options)
+    hass.states.async_set("sensor.up", "1", {})
+    hass.states.async_set("sensor.down", "2", {})
+    assert [p["t"] for p in render(hass, template)[0]["text"]] == ["UP 1", " | DN 2"]
+    hass.states.async_set("sensor.down", "0", {})
+    assert [p["t"] for p in render(hass, template)[0]["text"]] == ["UP 1"]
+    hass.states.async_set("sensor.up", "unavailable", {})
+    hass.states.async_set("sensor.down", "3", {})
+    # The separator only goes between two entities shown.
+    assert [p["t"] for p in render(hass, template)[0]["text"]] == ["DN 3"]
+    hass.states.async_set("sensor.down", "unknown", {})
+    assert render(hass, template) == []
+
+
+async def test_line_on_awtrix_ng(hass: HomeAssistant) -> None:
+    """AWTRIX NG gets one text, in the first color, and its own keys."""
+    hass.states.async_set("sensor.up", "750", {})
+    hass.states.async_set("sensor.down", "30", {})
+    template = build_app_template(
+        {**LINE, "progress": True, "progress_max": 1000}, "awtrix_ng"
+    )
+    assert render(hass, template) == [
+        {
+            "text": "UP 750 DN 30",
+            "textColor": "#00FF00",
+            "progress": 75,
+            "progressColor": "#00FF00",
+            "progressTrackColor": "#2E2E2E",
+        }
+    ]
+
+
+def test_line_rejects_unsafe_entities() -> None:
+    """The next entities are checked like the first one."""
+    with pytest.raises(InvalidSimpleOptionsError):
+        build_app_template({**LINE, "segments": [{"entity_id": "x') }}"}]})

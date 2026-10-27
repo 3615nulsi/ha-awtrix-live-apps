@@ -78,6 +78,7 @@ Choose an entity, add a label, an icon and colors, and you're done. The preview 
 | **Show the unit** | Adds `°C`, `%`, `kW`… after the value. |
 | **Hide when the value is 0** | Handy for solar production at night. |
 | **Progress bar** | A bar at the bottom of the screen, from the app's entity or another one, empty and full at the values you choose. It can follow the text color. |
+| **Add an entity** | Shows several entities on the same line, like `UP 750 DN 30`. Each one has its own label, decimals, unit and color (fixed, steps or gradient); a tab per entity switches between them, and a **separator** goes between two. An entity without a value leaves the line, and the app leaves the rotation when none is left. On AWTRIX NG the whole line takes the color of the first entity. |
 | **Color according to the value** | **Fixed**, **steps** (up to two thresholds, each with its color), or a **gradient**: pick a ready-made one (*the higher, the worse*, *the lower, the worse*, *best in the middle*, *cold → hot*) and set its range, or make your own with 2 to 5 points. For temperatures, CO2, humidity or batteries, a sensible range is suggested. |
 
 The app also leaves the rotation by itself while its entity is unavailable.

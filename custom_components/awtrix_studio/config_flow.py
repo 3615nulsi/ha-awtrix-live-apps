@@ -70,6 +70,8 @@ from .const import (
     CONF_PROGRESS_ENTITY,
     CONF_PROGRESS_MAX,
     CONF_PROGRESS_MIN,
+    CONF_SEGMENTS,
+    CONF_SEPARATOR,
     CONF_SHOW_UNIT,
     CONF_TEMPLATE,
     CONF_THRESHOLD_1,
@@ -87,6 +89,7 @@ from .const import (
     DEFAULT_PROGRESS_BG,
     DEFAULT_PROGRESS_MAX,
     DEFAULT_PROGRESS_MIN,
+    DEFAULT_SEPARATOR,
     DOMAIN,
     EFFECT_NONE,
     EFFECTS,
@@ -387,6 +390,13 @@ class _LiveSubentryFlow(ConfigSubentryFlow):
         # Display options are only edited in the panel: keep them.
         if display := self._current.get(CONF_DISPLAY):
             data = {**data, CONF_DISPLAY: display}
+        # So are the next entities of a simple app: this form edits the first.
+        if data.get(CONF_MODE) == MODE_SIMPLE and self._current.get(CONF_SEGMENTS):
+            data = {
+                **data,
+                CONF_SEGMENTS: self._current[CONF_SEGMENTS],
+                CONF_SEPARATOR: self._current.get(CONF_SEPARATOR, DEFAULT_SEPARATOR),
+            }
         return self.async_update_and_abort(
             self._get_entry(), self._get_reconfigure_subentry(), data=data
         )
