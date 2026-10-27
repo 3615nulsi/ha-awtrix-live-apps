@@ -21,18 +21,24 @@ from pytest_homeassistant_custom_component.typing import (
 
 from custom_components.awtrix_studio.clock_files import MAX_ICON_FILE_BYTES
 from custom_components.awtrix_studio.const import DOMAIN
+from custom_components.awtrix_studio.icons import MAX_SIDE, IconError, convert
 
 PREFIX = "awtrix_test"
 CLOCK = "http://192.168.1.161"
 
 
-def gif() -> bytes:
-    """An 8x8 icon: a red pixel top left, black elsewhere."""
-    image = Image.new("RGB", (8, 8), (0, 0, 0))
-    image.putpixel((0, 0), (255, 0, 0))
+def image(file_format: str = "GIF", size: tuple[int, int] = (8, 8)) -> bytes:
+    """An icon: a red pixel top left, black elsewhere."""
+    picture = Image.new("RGB", size, (0, 0, 0))
+    picture.putpixel((0, 0), (255, 0, 0))
     buffer = BytesIO()
-    image.save(buffer, format="GIF")
+    picture.save(buffer, format=file_format)
     return buffer.getvalue()
+
+
+def gif() -> bytes:
+    """An 8x8 GIF icon."""
+    return image()
 
 
 @pytest.fixture
@@ -153,3 +159,44 @@ async def test_icon_files_unavailable(
     assert not response["success"]
     assert response["error"]["code"] == "icons_unavailable"
     assert aioclient_mock.call_count == 0
+
+
+@pytest.mark.parametrize("file_format", ["GIF", "JPEG", "PNG"])
+def test_icon_formats(file_format: str) -> None:
+    """GIF, JPEG and PNG icons are decoded."""
+    assert len(convert(image(file_format))["pixels"]) == 64
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        image("BMP"),
+        image("TIFF"),
+        image("GIF", (MAX_SIDE + 1, 8)),
+        image("PNG", (8, MAX_SIDE + 1)),
+        b"GIF89a" + b"\x00" * 32,
+    ],
+    ids=["bmp", "tiff", "too-wide", "too-tall", "broken"],
+)
+def test_other_images_are_refused(data: bytes) -> None:
+    """Other formats, larger or broken images are refused."""
+    with pytest.raises(IconError):
+        convert(data)
+
+
+async def test_large_image_on_the_clock_is_refused(
+    hass: HomeAssistant,
+    mqtt_mock: MqttMockHAClient,
+    hass_ws_client: WebSocketGenerator,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """A small file announcing a huge image is refused before decoding."""
+    huge = image("GIF", (9000, 9000))
+    assert len(huge) < MAX_ICON_FILE_BYTES
+    aioclient_mock.get(f"{CLOCK}/list", json=[{"type": "file", "name": "bomb.gif"}])
+    aioclient_mock.get(f"{CLOCK}/ICONS/bomb.gif", content=huge)
+    entry = await setup_clock(hass)
+    response = await ask(hass, hass_ws_client, entry.entry_id, "bomb")
+    assert not response["success"]
+    assert response["error"]["code"] == "icons_unavailable"
+    assert "too large" in response["error"]["message"]
