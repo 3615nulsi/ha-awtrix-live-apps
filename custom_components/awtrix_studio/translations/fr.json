@@ -94,7 +94,7 @@
           "data_description": {
             "app_name": "Nom de l'app sur l'horloge. Il ne pourra plus être modifié.",
             "label": "Texte affiché avant la valeur, par exemple `CO2`.",
-            "icon": "`lametric:2422` pour une icône de la galerie LaMetric (envoyée par Awtrix Studio, rien à télécharger sur l'horloge ; le panneau propose un sélecteur), ou le nom d'un fichier d'icône présent sur l'horloge.",
+            "icon": "Le numéro d'une icône de la galerie LaMetric, par exemple `2422` (envoyée par Awtrix Studio, rien à télécharger, sauf si l'horloge a un fichier de ce nom ; le panneau propose un sélecteur), ou le nom d'un fichier d'icône présent sur l'horloge.",
             "decimals": "Laissez vide pour afficher la valeur telle quelle.",
             "threshold_1": "Facultatif. Au-dessus de cette valeur, le texte prend la couleur du premier seuil.",
             "threshold_2": "Facultatif. Au-dessus de cette valeur, le texte prend la couleur du second seuil.",

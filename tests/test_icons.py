@@ -109,9 +109,54 @@ async def test_store_downloads_once_and_resolves(
         await store.async_resolve(json.dumps({"text": "x", "icon": "lametric:404"}))
     )
     assert missing == {"text": "x"}
-    # Icons stored on the clock are left alone.
-    assert await store.async_resolve('{"icon":"2422"}') == '{"icon":"2422"}'
+    # Other names are icons stored on the clock: left alone.
+    assert await store.async_resolve('{"icon":"tram"}') == '{"icon":"tram"}'
     assert await store.async_resolve("") == ""
+
+
+async def test_numbers_are_gallery_icons(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """A bare number is the gallery icon, unless the clock has that file."""
+    aioclient_mock.get(ICON_URL.format(id=2422), content=png())
+    aioclient_mock.get(ICON_URL.format(id=2355), content=png())
+    aioclient_mock.get(ICON_URL.format(id=404), status=404)
+    aioclient_mock.get(
+        "http://192.168.1.161/list", json=[{"type": "file", "name": "2355.jpg"}]
+    )
+    store = IconStore(hass)
+    jpeg = convert(png())["jpeg"]
+
+    # Nowhere to look on the clock: the gallery icon, sent inline.
+    for name in ('"2422"', "2422"):
+        page = json.loads(await store.async_resolve(f'{{"icon":{name}}}'))
+        assert page["icon"] == jpeg
+    # Not in the gallery either: left to the clock, rather than dropped.
+    assert await store.async_resolve('{"icon":"404"}') == '{"icon":"404"}'
+
+    files = ClockFiles(hass, Awtrix3Driver(PREFIX))
+    files.set_address("192.168.1.161")
+    # A file of the clock wins over the gallery.
+    payload = '{"text":"x","icon":"2355"}'
+    assert await store.async_resolve(payload, files) == payload
+    page = json.loads(await store.async_resolve('{"icon":"2422"}', files))
+    assert page["icon"] == jpeg
+
+
+async def test_numbers_when_the_clock_cannot_be_listed(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """A clock that refuses the listing gets the gallery icon, asked once."""
+    aioclient_mock.get(ICON_URL.format(id=2422), content=png())
+    aioclient_mock.get("http://192.168.1.50/list", status=401)
+    store = IconStore(hass)
+    files = ClockFiles(hass, Awtrix3Driver(PREFIX))
+    files.set_address("192.168.1.50")
+    for _ in range(2):
+        page = json.loads(await store.async_resolve('{"icon":"2422"}', files))
+        assert page["icon"] == convert(png())["jpeg"]
+    listings = [c for c in aioclient_mock.mock_calls if "/list" in str(c[1])]
+    assert len(listings) == 1
 
 
 async def test_search_keeps_only_safe_fields(
