@@ -255,6 +255,55 @@ async def test_subentry_reconfigure_keeps_display_options(
     assert json.loads(published(mqtt_mock)[-1]) == {"duration": 12, "text": "edited"}
 
 
+async def test_subentry_reconfigure_keeps_segments(
+    hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+) -> None:
+    """The HA form edits the first entity of a line and keeps the others."""
+    hass.states.async_set("sensor.up", "750")
+    hass.states.async_set("sensor.down", "30")
+    line = {
+        "mode": "simple",
+        "app_name": "net",
+        "entity_id": "sensor.up",
+        "label": "UP",
+        "segments": [{"entity_id": "sensor.down", "label": "DN"}],
+        "separator": " | ",
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=PREFIX,
+        unique_id=PREFIX,
+        data={"firmware": "awtrix3", "prefix": PREFIX},
+        subentries_data=[
+            ConfigSubentryDataWithId(
+                data=line,
+                subentry_id="app_net",
+                subentry_type="app",
+                title="net",
+                unique_id="net",
+            )
+        ],
+    )
+    await setup_entry(hass, entry)
+
+    result = await entry.start_subentry_reconfigure_flow(hass, "app_net")
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "simple"}
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {"entity_id": "sensor.up", "label": "U", "color": [0, 255, 0]},
+    )
+    assert result["reason"] == "reconfigure_successful"
+    await hass.async_block_till_done()
+    data = entry.subentries["app_net"].data
+    assert data["segments"] == line["segments"]
+    assert data["separator"] == " | "
+    assert json.loads(published(mqtt_mock, f"{PREFIX}/custom/net")[-1]) == {
+        "text": [{"t": "U 750", "c": "#00FF00"}, {"t": " | DN 30", "c": "#FFFFFF"}]
+    }
+
+
 # ------------------------------------------------------------------- runtime
 
 

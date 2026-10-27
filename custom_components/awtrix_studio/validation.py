@@ -52,6 +52,8 @@ from .const import (
     CONF_PROGRESS_ENTITY,
     CONF_PROGRESS_MAX,
     CONF_PROGRESS_MIN,
+    CONF_SEGMENTS,
+    CONF_SEPARATOR,
     CONF_SHOW_UNIT,
     CONF_TEMPLATE,
     CONF_THRESHOLD_1,
@@ -67,12 +69,15 @@ from .const import (
     DEFAULT_PROGRESS_BG,
     DEFAULT_PROGRESS_MAX,
     DEFAULT_PROGRESS_MIN,
+    DEFAULT_SEPARATOR,
     EFFECT_NONE,
     EFFECTS,
     GRADIENT_CUSTOM,
     INDICATORS,
     MAX_LIFETIME,
     MAX_PAGE_INTERVAL,
+    MAX_SEGMENTS,
+    MAX_SEPARATOR,
     MIN_PAGE_INTERVAL,
     MODE_SIMPLE,
     MODE_TEMPLATE,
@@ -259,6 +264,50 @@ def _app_colors(data: Mapping[str, Any]) -> dict[str, Any]:
     return clean
 
 
+def _segment(data: Mapping[str, Any]) -> dict[str, Any]:
+    """One entity of a simple app: how its value is written, in which color."""
+    clean: dict[str, Any] = {
+        CONF_ENTITY_ID: _entity(data),
+        CONF_LABEL: _text(data, CONF_LABEL),
+        CONF_COLOR: _color(data, CONF_COLOR, list(DEFAULT_COLOR)),
+        CONF_SHOW_UNIT: _bool(data, CONF_SHOW_UNIT, True),
+        CONF_HIDE_WHEN_ZERO: _bool(data, CONF_HIDE_WHEN_ZERO, False),
+    }
+    decimals = _number(data, CONF_DECIMALS, 0, 4)
+    if decimals is not None:
+        clean[CONF_DECIMALS] = int(decimals)
+    clean.update(_app_colors(data))
+    return clean
+
+
+def _segments(data: Mapping[str, Any]) -> dict[str, Any]:
+    """The next entities of a simple app, and what separates them.
+
+    Errors name the field as `segments.<index>.<field>`.
+    """
+    extra = data.get(CONF_SEGMENTS)
+    if extra in (None, []):
+        return {}
+    if not isinstance(extra, list) or len(extra) >= MAX_SEGMENTS:
+        raise Invalid(CONF_SEGMENTS, "invalid_value")
+    segments = []
+    for index, segment in enumerate(extra):
+        field = f"{CONF_SEGMENTS}.{index}"
+        if not isinstance(segment, Mapping):
+            raise Invalid(field, "invalid_value")
+        try:
+            segments.append(_segment(segment))
+        except Invalid as err:
+            raise Invalid(f"{field}.{err.field}", err.key, err.detail) from err
+    # Spaces count here: the separator is kept as typed.
+    separator = data.get(CONF_SEPARATOR)
+    if separator is None:
+        separator = DEFAULT_SEPARATOR
+    if not isinstance(separator, str) or len(separator) > MAX_SEPARATOR:
+        raise Invalid(CONF_SEPARATOR, "invalid_value")
+    return {CONF_SEGMENTS: segments, CONF_SEPARATOR: separator}
+
+
 def _display(data: Mapping[str, Any], firmware: str) -> dict[str, Any]:
     """The display options of an app (stored only when some are set)."""
     try:
@@ -318,17 +367,10 @@ def normalize_app(
         clean: dict[str, Any] = {
             CONF_MODE: MODE_SIMPLE,
             CONF_APP_NAME: name,
-            CONF_ENTITY_ID: _entity(data),
-            CONF_LABEL: _text(data, CONF_LABEL),
+            **_segment(data),
             CONF_ICON: _text(data, CONF_ICON),
-            CONF_COLOR: _color(data, CONF_COLOR, list(DEFAULT_COLOR)),
-            CONF_SHOW_UNIT: _bool(data, CONF_SHOW_UNIT, True),
-            CONF_HIDE_WHEN_ZERO: _bool(data, CONF_HIDE_WHEN_ZERO, False),
         }
-        decimals = _number(data, CONF_DECIMALS, 0, 4)
-        if decimals is not None:
-            clean[CONF_DECIMALS] = int(decimals)
-        clean.update(_app_colors(data))
+        clean.update(_segments(data))
         clean.update(_progress(data))
         clean.update(_display(data, entry.data[CONF_FIRMWARE]))
         return clean

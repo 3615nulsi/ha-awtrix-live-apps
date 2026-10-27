@@ -78,6 +78,7 @@ Choisissez une entité, ajoutez un libellé, une icône et des couleurs, et c'es
 | **Afficher l'unité** | Ajoute `°C`, `%`, `kW`… après la valeur. |
 | **Masquer quand la valeur vaut 0** | Pratique pour la production solaire la nuit. |
 | **Barre de progression** | Une barre en bas de l'écran, à partir de l'entité de l'app ou d'une autre, vide et pleine aux valeurs de votre choix. Elle peut suivre la couleur du texte. |
+| **Ajouter une entité** | Affiche plusieurs entités sur la même ligne, par exemple `UP 750 DN 30`. Chacune a son libellé, ses décimales, son unité et sa couleur (fixe, par paliers ou en dégradé) ; un onglet par entité permet de passer de l'une à l'autre, et un **séparateur** se place entre deux. Une entité sans valeur quitte la ligne, et l'app quitte la rotation quand il n'en reste aucune. Sur AWTRIX NG, toute la ligne prend la couleur de la première entité. |
 | **Couleur selon la valeur** | **Fixe**, par **paliers** (jusqu'à deux seuils, chacun avec sa couleur), ou en **dégradé** : choisissez-en un tout prêt (*plus c'est haut, pire c'est*, *plus c'est bas, pire c'est*, *idéal au milieu*, *froid → chaud*) et réglez ses bornes, ou créez le vôtre avec 2 à 5 points. Pour une température, du CO2, de l'humidité ou une batterie, des bornes adaptées sont proposées. |
 
 L'app quitte aussi la rotation d'elle-même tant que son entité est indisponible.

@@ -219,6 +219,35 @@ async def test_save_validates_and_strips_unknown_keys(
         "color": "#FF0000",
     }
 
+    # More entities on the line: checked one by one, errors say which.
+    line = {
+        **simple,
+        "app_name": "line",
+        "segments": [{"entity_id": "sensor.temp", "label": "B", "color": "#00ff00"}],
+        "separator": " | ",
+    }
+    assert (await save({**line, "segments": [{"entity_id": "sensor.x') }}"}]}))[
+        "errors"
+    ] == {"segments.0.entity_id": "invalid_entity"}
+    assert (await save({**line, "segments": [{"entity_id": "sensor.temp"}] * 5}))[
+        "errors"
+    ] == {"segments": "invalid_value"}
+    assert (await save({**line, "separator": "x" * 9}))["errors"] == {
+        "separator": "invalid_value"
+    }
+    saved = await save({**line, "segments": [{**line["segments"][0], "evil": 1}]})
+    await hass.async_block_till_done()
+    data = entry.subentries[saved["subentry_id"]].data
+    assert data["separator"] == " | "
+    assert data["segments"][0]["color"] == [0, 255, 0]
+    assert "evil" not in data["segments"][0]
+    assert json.loads(published(mqtt_mock, f"{PREFIX}/custom/line")[-1]) == {
+        "text": [
+            {"t": "21.5°C", "c": "#FFFFFF"},
+            {"t": " | B 21.5°C", "c": "#00FF00"},
+        ]
+    }
+
     # Editing keeps the name, whatever is sent.
     result = await save(
         {"mode": "template", "app_name": "renamed", "template": '{"text": "x"}'},

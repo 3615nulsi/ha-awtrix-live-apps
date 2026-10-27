@@ -95,7 +95,10 @@ d'affichage restent stockées avec les noms AWTRIX 3, validées pour le firmware
 de l'horloge (pas de `topText` ni de `save` sur NG, vitesse d'effet en
 multiplicateur), et traduites en clés NG à la publication. Sur NG, une app n'a
 qu'une palette : celle du style de texte (arc-en-ciel, dégradé) l'emporte sur
-celle de l'effet. Les refus de l'horloge (`…/result`) sont affichés dans le
+celle de l'effet. Une app simple à plusieurs entités envoie sur AWTRIX 3 un
+texte en fragments colorés (`[{"t", "c"}]`) ; NG n'en documente pas
+l'équivalent, la ligne y part en un seul texte, de la couleur de la première
+entité. Les refus de l'horloge (`…/result`) sont affichés dans le
 panneau, et les effets, météos et palettes sont lus sur `state/capabilities`.
 
 Aperçu : le simulateur lit les clés et les dessins NG (tableaux `["rect", …]`,
