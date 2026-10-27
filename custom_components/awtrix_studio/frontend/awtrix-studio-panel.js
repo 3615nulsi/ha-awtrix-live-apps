@@ -7,7 +7,7 @@
 // - every action goes through admin-only WebSocket commands validated on the
 //   server side.
 
-import { addIndicators, drawMatrix, parseColor, renderPage, screenToPixels, WIDTH, HEIGHT } from "./matrix.js";
+import { addIndicators, clockIcon, drawMatrix, parseColor, renderPage, screenToPixels, setClockIcons, WIDTH, HEIGHT } from "./matrix.js";
 import { translator } from "./i18n.js";
 import { MAX_STOPS, PRESETS, colorAt, cssGradient, formStops, presetCss, rgbToHex, suggestion } from "./gradients.js";
 
@@ -416,6 +416,7 @@ class AwtrixStudioPanel extends HTMLElement {
   _subscribeSnapshot() {
     this._subscribe("snapshot", { type: "awtrix_studio/subscribe", entry_id: this._entryId }, (snapshot) => {
       this._snapshot = snapshot;
+      this._setClockIcons(snapshot);
       if (this._view.name === "overview") this._updateOverview();
     });
   }
@@ -1254,7 +1255,14 @@ class AwtrixStudioPanel extends HTMLElement {
     ctx.fillRect(0, 0, 8, 8);
     const match = /^lametric:(\d{1,7})$/.exec(this._form.icon || "");
     canvas.title = match ? "" : this.t("icon_on_clock");
-    if (!match) return;
+    if (!match) {
+      (clockIcon(this._form.icon, () => this._drawIconPreview()) || []).forEach((color, i) => {
+        if (!color) return;
+        ctx.fillStyle = color;
+        ctx.fillRect(i % 8, Math.floor(i / 8), 1, 1);
+      });
+      return;
+    }
     const id = Number(match[1]);
     const pixels = await this._iconPixels(id);
     if (!pixels || this._form.icon !== `lametric:${id}`) return;
@@ -1263,6 +1271,14 @@ class AwtrixStudioPanel extends HTMLElement {
       ctx.fillStyle = parseColor(value);
       ctx.fillRect(i % 8, Math.floor(i / 8), 1, 1);
     });
+  }
+
+  // Icons stored on the clock are read through Home Assistant, per clock.
+  _setClockIcons(snapshot) {
+    const entryId = snapshot.entry_id;
+    if (!snapshot.features?.icon_files || !snapshot.loaded) return setClockIcons(null, null);
+    setClockIcons(entryId, (name) => this._hass.callWS({ type: "awtrix_studio/icons/clock", entry_id: entryId, name })
+      .then((r) => r.pixels));
   }
 
   async _iconPixels(id) {

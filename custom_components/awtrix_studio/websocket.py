@@ -17,6 +17,7 @@ try:  # Home Assistant 2026.x replaced voluptuous with its fork, probatio.
 except ImportError:  # pragma: no cover - older Home Assistant
     import voluptuous as vol
 
+import aiohttp
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigSubentry
 from homeassistant.const import SERVICE_TURN_OFF, SERVICE_TURN_ON
@@ -32,6 +33,7 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.template import Template
 
+from .clock_files import ICON_NAME_PATTERN
 from .const import (
     APP_NAME_PATTERN,
     CONF_APP_NAME,
@@ -49,7 +51,7 @@ from .const import (
 )
 from .display import CONF_DISPLAY, apply_display
 from .drivers import Screen
-from .icons import IconError, IconStore
+from .icons import IconError, IconStore, convert
 from .loop import MAX_APP_NAME, MAX_LOOP, clean_order
 from .manager import MANAGED_SUBENTRY_TYPES, ClockManager
 from .pages import InvalidPagesError, parse_pages, serialize_page
@@ -102,6 +104,7 @@ def async_setup(hass: HomeAssistant) -> None:
         ws_import,
         ws_icon_search,
         ws_icon_get,
+        ws_icon_clock,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -170,6 +173,7 @@ def _snapshot(entry: ConfigEntry, manager: ClockManager | None) -> dict[str, Any
             "screen": bool(driver and driver.screen_topic),
             "navigate": bool(driver and driver.navigate(True)),
             "order": bool(driver and driver.can_reorder),
+            "icon_files": bool(driver and driver.icon_file("") is not None),
         },
         "items": items,
     }
@@ -802,3 +806,35 @@ async def ws_icon_get(
     connection.send_result(
         msg["id"], {"pixels": icon["pixels"], "animated": icon["animated"]}
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "awtrix_studio/icons/clock",
+        vol.Required("entry_id"): ENTRY_ID,
+        vol.Required("name"): vol.All(str, vol.Match(ICON_NAME_PATTERN)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_icon_clock(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Return the pixels of an icon stored on the clock, for the preview.
+
+    `pixels` is None when the clock has no such file.
+    """
+    entry = _entry(hass, msg["entry_id"])
+    manager = _manager(entry) if entry else None
+    if entry is None or manager is None:
+        _error(connection, msg, websocket_api.ERR_NOT_FOUND, "Unknown clock")
+        return
+    try:
+        data = await manager.files.async_read_icon(msg["name"])
+        icon = None
+        if data is not None:
+            icon = await hass.async_add_executor_job(convert, data)
+    except (aiohttp.ClientError, TimeoutError, ValueError, IconError) as err:
+        _error(connection, msg, "icons_unavailable", str(err) or type(err).__name__)
+        return
+    connection.send_result(msg["id"], {"pixels": icon["pixels"] if icon else None})

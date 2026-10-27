@@ -12,12 +12,16 @@ icon's first image sent inline.
 
 The app loop order is also read and changed there: AWTRIX has no MQTT command
 to reorder apps.
+
+The panel's preview reads the icons already on the clock the same way, through
+Home Assistant: only a file of the clock's /ICONS listing is ever fetched.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Final
 
 import aiohttp
@@ -31,6 +35,11 @@ _LOGGER = logging.getLogger(__name__)
 TIMEOUT: Final = aiohttp.ClientTimeout(total=5)
 # How long a failed upload is not retried, in seconds.
 RETRY_AFTER: Final = 300
+# Names of the icon files the preview may read, and their size limit.
+ICON_NAME_PATTERN: Final = r"^[A-Za-z0-9_-]{1,64}$"
+ICON_NAME_RE: Final = re.compile(ICON_NAME_PATTERN)
+ICON_EXTENSIONS: Final = ("gif", "jpg")
+MAX_ICON_FILE_BYTES: Final = 64 * 1024
 
 
 def upload_form(path: str, data: bytes) -> aiohttp.FormData:
@@ -148,3 +157,34 @@ class ClockFiles:
             timeout=TIMEOUT,
         ) as response:
             response.raise_for_status()
+
+    async def async_read_icon(self, name: str) -> bytes | None:
+        """Return the icon file `<name>.*` of the clock; None if there is none.
+
+        The listing is read again, so that a file added since shows up, and
+        only a file it names is fetched. Raises when the clock cannot be read.
+        """
+        if not self.supported:
+            raise ValueError("icon files not supported")
+        if not ICON_NAME_RE.fullmatch(name):
+            return None
+        present = await self._async_list()
+        filename = next(
+            (
+                f"{name}.{extension}"
+                for extension in ICON_EXTENSIONS
+                if f"{name}.{extension}" in present
+            ),
+            None,
+        )
+        if filename is None:
+            return None
+        session = async_get_clientsession(self.hass)
+        async with session.get(
+            self._url(self.driver.icon_file(filename)), timeout=TIMEOUT
+        ) as response:
+            response.raise_for_status()
+            data = await response.content.read(MAX_ICON_FILE_BYTES + 1)
+        if len(data) > MAX_ICON_FILE_BYTES:
+            raise ValueError("file too large")
+        return data
