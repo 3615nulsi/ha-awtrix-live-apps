@@ -5,7 +5,8 @@
 // the "real screen" view mirrors the actual clock when exactness matters.
 //
 // Security: page JSON is treated as drawing data only. Colors are parsed into
-// strict #RRGGBB strings, icons are only loaded from LaMetric by numeric ID,
+// strict #RRGGBB strings, icons are only loaded from LaMetric by numeric ID
+// or, by plain file name, as pixels from Home Assistant (see setClockIcons),
 // and nothing is ever inserted into the DOM as HTML.
 
 export const WIDTH = 32;
@@ -291,12 +292,53 @@ export function screenToPixels(values, width = WIDTH, height = HEIGHT) {
   return values.map((v) => (Number.isInteger(v) && v > 0 ? parseColor(v) : OFF));
 }
 
-// LaMetric icons, by numeric ID only. Loaded with CORS when the server allows
-// it (drawn pixel by pixel), else drawn as a plain image over the icon area.
+// Icons stored on the clock, by plain file name. The panel gives a loader per
+// clock (key), which resolves to 64 RGB integers from Home Assistant, or null
+// when the clock has no such icon. A failed request is tried again later.
+const CLOCK_ICON_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const CLOCK_ICON_RETRY = 30000;
+const CLOCK_ICONS = new Map();
+let clockIcons = { key: null, loader: null };
+
+/** Set where icons stored on the clock come from (null: nowhere). */
+export function setClockIcons(key, loader) {
+  if (key === clockIcons.key) return;
+  clockIcons = { key, loader };
+  CLOCK_ICONS.clear();
+}
+
+/** Return the pixels (#RRGGBB or null) of an icon stored on the clock, or null until known. */
+export function clockIcon(name, onReady) {
+  const entry = loadClockIcon(String(name ?? ""), onReady);
+  return entry ? entry.pixels : null;
+}
+
+function loadClockIcon(name, onReady) {
+  if (!clockIcons.loader || !CLOCK_ICON_RE.test(name)) return null;
+  let entry = CLOCK_ICONS.get(name);
+  if (!entry || (entry.failedAt && Date.now() - entry.failedAt > CLOCK_ICON_RETRY)) {
+    entry = { readable: true, pixels: undefined, failedAt: 0, waiting: [] };
+    CLOCK_ICONS.set(name, entry);
+    clockIcons.loader(name).then((values) => {
+      entry.pixels = Array.isArray(values) && values.length === 64
+        ? values.map((v) => (Number.isInteger(v) && v > 0 ? parseColor(v) : OFF))
+        : null;
+      entry.waiting.splice(0).forEach((cb) => cb());
+    }, () => { entry.failedAt = Date.now(); entry.waiting.length = 0; });
+  }
+  if (entry.pixels === undefined) {
+    if (onReady && !entry.failedAt) entry.waiting.push(onReady);
+    return null;
+  }
+  return entry.pixels ? entry : null;
+}
+
+// LaMetric icons, by numeric ID. Loaded with CORS when the server allows it
+// (drawn pixel by pixel), else drawn as a plain image over the icon area.
 const ICONS = new Map();
 function loadIcon(id, onReady) {
   id = String(id).replace(/^lametric:/, "");
-  if (!/^\d{1,7}$/.test(id)) return null;
+  if (!/^\d{1,7}$/.test(id)) return loadClockIcon(id, onReady);
   let entry = ICONS.get(id);
   if (!entry) {
     entry = { image: null, readable: false, waiting: [] };

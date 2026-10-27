@@ -108,7 +108,12 @@ async def test_clocks_and_snapshot(
     assert (await client.receive_json())["success"]
     await tick(hass, freezer, 0.2)
     snapshot = (await client.receive_json())["event"]
-    assert snapshot["features"] == {"screen": True, "navigate": True, "order": True}
+    assert snapshot["features"] == {
+        "screen": True,
+        "navigate": True,
+        "order": True,
+        "icon_files": True,
+    }
     [item] = snapshot["items"]
     assert item["subentry_id"] == "app_demo"
     assert item["enabled"] is True

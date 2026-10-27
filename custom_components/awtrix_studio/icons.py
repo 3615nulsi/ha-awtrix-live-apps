@@ -44,6 +44,10 @@ MAX_ICON_BYTES: Final = 64 * 1024
 TIMEOUT: Final = aiohttp.ClientTimeout(total=10)
 PAGE_SIZE: Final = 48
 SIZE: Final = 8
+# Only these decoders ever see an icon file, and only up to this size, read
+# from the header before anything is decoded (icons are 8x8).
+FORMATS: Final = ("GIF", "JPEG", "PNG")
+MAX_SIDE: Final = 64
 # How long a failed download is not retried, in seconds.
 RETRY_AFTER: Final = 300
 
@@ -63,10 +67,12 @@ def convert(data: bytes) -> dict[str, Any]:
     """Turn a LaMetric icon file into pixels and an 8x8 Base64 JPEG.
 
     Runs in the executor (Pillow is blocking). Transparent pixels become black,
-    the clock's "off".
+    the clock's "off". Other formats and larger images are refused unread.
     """
     try:
-        with Image.open(BytesIO(data)) as image:
+        with Image.open(BytesIO(data), formats=FORMATS) as image:
+            if image.width > MAX_SIDE or image.height > MAX_SIDE:
+                raise IconError(f"image too large: {image.width}x{image.height}")
             animated = getattr(image, "n_frames", 1) > 1
             file_format = (image.format or "").lower()
             image.seek(0)
