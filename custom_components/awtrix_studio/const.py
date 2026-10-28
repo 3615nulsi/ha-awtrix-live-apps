@@ -122,3 +122,13 @@ CONF_PROGRESS_BG: Final = "progress_bg"
 DEFAULT_PROGRESS_MIN: Final = 0.0
 DEFAULT_PROGRESS_MAX: Final = 100.0
 DEFAULT_PROGRESS_BG: Final = [46, 46, 46]
+
+# Simple mode, layouts (AWTRIX NG on a TC002): the app is drawn on the whole
+# 52 x 16 display, in boxes, instead of one line at double size. The icon is
+# optional in every layout; without it the text takes the whole width.
+CONF_LAYOUT: Final = "layout"
+LAYOUT_VALUE: Final = "value"
+LAYOUT_TITLE_VALUE: Final = "title_value"
+LAYOUT_VALUE_BAR: Final = "value_bar"
+LAYOUT_TWO_LINES: Final = "two_lines"
+LAYOUTS: Final = (LAYOUT_VALUE, LAYOUT_TITLE_VALUE, LAYOUT_VALUE_BAR, LAYOUT_TWO_LINES)

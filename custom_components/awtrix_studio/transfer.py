@@ -39,8 +39,10 @@ from .const import (
     CONF_APP_NAME,
     CONF_ENTITY_ID,
     CONF_INDICATOR,
+    CONF_LAYOUT,
     CONF_MODE,
     CONF_TEMPLATE,
+    FIRMWARE_AWTRIX_NG,
     INDICATORS,
     MODE_SIMPLE,
     MODE_TEMPLATE,
@@ -301,6 +303,10 @@ def plan_import(  # noqa: PLR0912, PLR0915
         data = dict(raw)
         data.pop("type", None)
         data.pop("firmware", None)
+        if data.get(CONF_LAYOUT) and firmware != FIRMWARE_AWTRIX_NG:
+            # Layouts are for AWTRIX NG on a TC002: elsewhere, one line.
+            data.pop(CONF_LAYOUT)
+            plan.warnings.append("layout_dropped")
         if is_app:
             data[CONF_APP_NAME] = target
         else:

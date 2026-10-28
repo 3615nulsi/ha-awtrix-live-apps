@@ -60,6 +60,7 @@ from .const import (
     CONF_ICON,
     CONF_INDICATOR,
     CONF_LABEL,
+    CONF_LAYOUT,
     CONF_LIFETIME,
     CONF_MODE,
     CONF_PAGE_INTERVAL,
@@ -390,6 +391,9 @@ class _LiveSubentryFlow(ConfigSubentryFlow):
         # Display options are only edited in the panel: keep them.
         if display := self._current.get(CONF_DISPLAY):
             data = {**data, CONF_DISPLAY: display}
+        # So is the layout of a simple app on a TC002.
+        if data.get(CONF_MODE) == MODE_SIMPLE and self._current.get(CONF_LAYOUT):
+            data = {**data, CONF_LAYOUT: self._current[CONF_LAYOUT]}
         # So are the next entities of a simple app: this form edits the first.
         if data.get(CONF_MODE) == MODE_SIMPLE and self._current.get(CONF_SEGMENTS):
             data = {

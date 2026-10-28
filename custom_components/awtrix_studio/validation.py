@@ -43,6 +43,7 @@ from .const import (
     CONF_ICON,
     CONF_INDICATOR,
     CONF_LABEL,
+    CONF_LAYOUT,
     CONF_LIFETIME,
     CONF_MODE,
     CONF_PAGE_INTERVAL,
@@ -72,8 +73,12 @@ from .const import (
     DEFAULT_SEPARATOR,
     EFFECT_NONE,
     EFFECTS,
+    FIRMWARE_AWTRIX_NG,
     GRADIENT_CUSTOM,
     INDICATORS,
+    LAYOUT_TWO_LINES,
+    LAYOUT_VALUE_BAR,
+    LAYOUTS,
     MAX_LIFETIME,
     MAX_PAGE_INTERVAL,
     MAX_SEGMENTS,
@@ -308,6 +313,25 @@ def _segments(data: Mapping[str, Any]) -> dict[str, Any]:
     return {CONF_SEGMENTS: segments, CONF_SEPARATOR: separator}
 
 
+def _layout(data: Mapping[str, Any], firmware: str, segments: int) -> dict[str, Any]:
+    """The layout of a simple app on a TC002, if it has one.
+
+    Two lines show exactly two entities, the other layouts one.
+    """
+    layout = data.get(CONF_LAYOUT)
+    if layout in (None, ""):
+        return {}
+    if layout not in LAYOUTS:
+        raise Invalid(CONF_LAYOUT, "invalid_value")
+    if firmware != FIRMWARE_AWTRIX_NG:
+        raise Invalid(CONF_LAYOUT, "layout_ng_only")
+    if layout == LAYOUT_TWO_LINES and segments != 1:
+        raise Invalid(CONF_SEGMENTS, "layout_two_entities")
+    if layout != LAYOUT_TWO_LINES and segments:
+        raise Invalid(CONF_SEGMENTS, "layout_one_entity")
+    return {CONF_LAYOUT: layout}
+
+
 def _display(data: Mapping[str, Any], firmware: str) -> dict[str, Any]:
     """The display options of an app (stored only when some are set)."""
     try:
@@ -371,7 +395,15 @@ def normalize_app(
             CONF_ICON: _text(data, CONF_ICON),
         }
         clean.update(_segments(data))
-        clean.update(_progress(data))
+        layout = _layout(
+            data, entry.data[CONF_FIRMWARE], len(clean.get(CONF_SEGMENTS, []))
+        )
+        clean.update(layout)
+        if layout.get(CONF_LAYOUT) == LAYOUT_VALUE_BAR:
+            # The bar is what this layout is for.
+            clean.update(_progress({**data, CONF_PROGRESS: True}))
+        else:
+            clean.update(_progress(data))
         clean.update(_display(data, entry.data[CONF_FIRMWARE]))
         return clean
 
