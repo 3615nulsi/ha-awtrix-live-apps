@@ -57,8 +57,10 @@ from .const import (
     CONF_SEPARATOR,
     CONF_SHOW_UNIT,
     CONF_TEMPLATE,
+    CONF_TEXT_FONT,
     CONF_THRESHOLD_1,
     CONF_THRESHOLD_2,
+    CONF_VALUE_FONT,
     DEFAULT_ACTIVE_STATE,
     DEFAULT_COLOR,
     DEFAULT_CYCLE_ONLY_ON_SCREEN,
@@ -88,6 +90,8 @@ from .const import (
     MODE_TEMPLATE,
     SUBENTRY_TYPE_APP,
     SUBENTRY_TYPE_INDICATOR,
+    TEXT_FONTS,
+    VALUE_FONTS,
 )
 from .display import CONF_DISPLAY, InvalidDisplayError, normalize_display
 from .gradients import InvalidGradientError, resolve_stops, stops_to_data
@@ -329,7 +333,16 @@ def _layout(data: Mapping[str, Any], firmware: str, segments: int) -> dict[str, 
         raise Invalid(CONF_SEGMENTS, "layout_two_entities")
     if layout != LAYOUT_TWO_LINES and segments:
         raise Invalid(CONF_SEGMENTS, "layout_one_entity")
-    return {CONF_LAYOUT: layout}
+    clean = {CONF_LAYOUT: layout}
+    # Only legible fonts are offered; the default is not stored.
+    for key, fonts in ((CONF_VALUE_FONT, VALUE_FONTS), (CONF_TEXT_FONT, TEXT_FONTS)):
+        font = data.get(key)
+        if font in (None, "", fonts[0]):
+            continue
+        if font not in fonts:
+            raise Invalid(key, "invalid_value")
+        clean[key] = font
+    return clean
 
 
 def _display(data: Mapping[str, Any], firmware: str) -> dict[str, Any]:

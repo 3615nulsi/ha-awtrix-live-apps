@@ -112,8 +112,10 @@ dans ses données) : valeur, titre et valeur, valeur et barre, ou deux entités
 sur deux lignes, l'icône restant facultative. Son modèle produit alors un
 `layout` NG (des zones `[x, y, largeur, hauteur]` sur les 52 × 16 pixels), que
 l'horloge dessine en taille réelle même quand `enlargeApps` est activé. Les
-polices sont fixées pour la lisibilité : `matrix-light6` pour les titres et les
-lignes, `matrix-chunky8` pour les valeurs. À côté d'un `layout`, NG n'accepte
+polices se choisissent parmi les plus lisibles (`value_font` et `text_font`) :
+pour la valeur, `matrix-chunky8` par défaut, `matrix-light8` ou les larges
+`matrix-chunky8x6` et `matrix-light8x6` ; pour le titre et les lignes,
+`matrix-light6` par défaut ou `matrix-chunky6`. À côté d'un `layout`, NG n'accepte
 que la durée, la répétition et la durée de vie : les autres options
 d'affichage vont dans le layout (effet, fond, météo, palette) ou dans ses zones
 de texte (casse, clignotement, fondu, défilement), et les options de placement

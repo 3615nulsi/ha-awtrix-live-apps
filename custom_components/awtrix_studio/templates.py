@@ -44,8 +44,10 @@ from .const import (
     CONF_SEGMENTS,
     CONF_SEPARATOR,
     CONF_SHOW_UNIT,
+    CONF_TEXT_FONT,
     CONF_THRESHOLD_1,
     CONF_THRESHOLD_2,
+    CONF_VALUE_FONT,
     DEFAULT_ACTIVE_STATE,
     DEFAULT_COLOR,
     DEFAULT_EFFECT_INTERVAL,
@@ -63,6 +65,8 @@ from .const import (
     LAYOUT_TWO_LINES,
     LAYOUT_VALUE_BAR,
     LAYOUTS,
+    TEXT_FONTS,
+    VALUE_FONTS,
 )
 from .gradients import InvalidGradientError, jinja_lines, resolve_stops
 
@@ -96,15 +100,18 @@ KEYS: dict[str, dict[str, str]] = {
 
 # Layouts (AWTRIX NG on a TC002) count every pixel of the 52 x 16 display. The
 # icon, when there is one, fills the left 16 columns: an 8 x 8 gallery icon is
-# drawn at double size there (see icons). Fonts are picked for legibility: a
-# light 6-pixel font for titles and lines, a chunky 8-pixel one for values.
+# drawn at double size there (see icons). Fonts are chosen among legible ones:
+# 8 pixels high for the value, 6 for the title and the two lines.
 DISPLAY_WIDTH = 52
 ICON_BOX = [0, 0, 16, 16]
 TEXT_X = 17
-FONT_TITLE = "matrix-light6"
-FONT_VALUE = "matrix-chunky8"
-FONT_LINE = "matrix-light6"
 TITLE_COLOR = "#969696"
+
+
+def _font(options: Mapping[str, Any], key: str, fonts: Sequence[str]) -> str:
+    """The font chosen for a layout, or the default (the first)."""
+    font = options.get(key)
+    return font if font in fonts else fonts[0]
 
 
 def _keys(firmware: str) -> dict[str, str]:
@@ -316,14 +323,15 @@ def _build_layout_template(options: Mapping[str, Any]) -> str:
             "title",
             _box(x, 0, width, 7),
             jinja_str(title),
-            FONT_TITLE,
+            _font(options, CONF_TEXT_FONT, TEXT_FONTS),
             jinja_str(TITLE_COLOR),
         )
         regions = f"{regions} + [{title_region}]"
         value_box = _box(x, 8, width, 8)
     elif layout == LAYOUT_VALUE_BAR:
         value_box = _box(x, 0, width, 11)
-    value = _text_region("value", value_box, "text", FONT_VALUE, "color")
+    value_font = _font(options, CONF_VALUE_FONT, VALUE_FONTS)
+    value = _text_region("value", value_box, "text", value_font, "color")
     lines.append(f"{{%- set regions = {regions} + [{value}] -%}}")
     if layout == LAYOUT_VALUE_BAR:
         lines += _bar_lines(options, entity, _box(x, 12, width, 3))
@@ -353,15 +361,17 @@ def _two_lines(
             '{%- set parts = parts + [{"t": text, "c": color}] -%}',
             "{%- endif -%}",
         ]
+    value_font = _font(options, CONF_VALUE_FONT, VALUE_FONTS)
+    line_font = _font(options, CONF_TEXT_FONT, TEXT_FONTS)
     alone = _text_region(
-        "line1", _box(x, 0, width, 16), "parts[0].t", FONT_VALUE, "parts[0].c"
+        "line1", _box(x, 0, width, 16), "parts[0].t", value_font, "parts[0].c"
     )
     start = ', "align": "start"'
     first = _text_region(
         "line1",
         _box(x, 0, width, 8),
         "parts[0].t",
-        FONT_LINE,
+        line_font,
         "parts[0].c",
         extra=start,
     )
@@ -369,7 +379,7 @@ def _two_lines(
         "line2",
         _box(x, 8, width, 8),
         "parts[1].t",
-        FONT_LINE,
+        line_font,
         "parts[1].c",
         extra=start,
     )

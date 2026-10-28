@@ -393,10 +393,17 @@ async def test_save_and_publish_a_layout_app(
     assert result["errors"] == {"segments": "layout_one_entity"}
     result = (await send("save", {**app, "layout": "grid"}))["result"]
     assert result["errors"] == {"layout": "invalid_value"}
+    result = (await send("save", {**app, "value_font": "small"}))["result"]
+    assert result["errors"] == {"value_font": "invalid_value"}
 
+    app["value_font"] = "matrix-light8"
+    app["text_font"] = "matrix-light6"
     subentry_id = (await send("save", app))["result"]["subentry_id"]
     await hass.async_block_till_done()
-    assert entry.subentries[subentry_id].data["layout"] == "title_value"
+    stored = entry.subentries[subentry_id].data
+    assert stored["layout"] == "title_value"
+    # The default font is not stored.
+    assert (stored["value_font"], "text_font" in stored) == ("matrix-light8", False)
     topic = f"{PREFIX}/cmd/apps/pushed/humidity"
     payloads = [
         c.args[1] for c in mqtt_mock.async_publish.call_args_list if c.args[0] == topic
@@ -436,3 +443,28 @@ async def test_no_layout_on_awtrix3(
     )
     response = await client.receive_json()
     assert response["result"]["errors"] == {"layout": "layout_ng_only"}
+
+
+async def test_fonts(hass: HomeAssistant) -> None:
+    """The value and the title take the fonts chosen among legible ones."""
+    hass.states.async_set("sensor.h", "48")
+    options = {
+        "layout": "title_value",
+        "entity_id": "sensor.h",
+        "label": "Salon",
+        "value_font": "matrix-chunky8x6",
+        "text_font": "matrix-chunky6",
+    }
+    title, value = regions(hass, options)
+    assert (title["font"], value["font"]) == ("matrix-chunky6", "matrix-chunky8x6")
+    # Two lines use the title font; one left alone takes the value font.
+    hass.states.async_set("sensor.t", "21")
+    options.update(layout="two_lines", segments=[{"entity_id": "sensor.t"}])
+    assert [r["font"] for r in regions(hass, options)] == ["matrix-chunky6"] * 2
+    hass.states.async_set("sensor.h", "unknown")
+    assert regions(hass, options)[0]["font"] == "matrix-chunky8x6"
+    # Anything else falls back to the defaults.
+    options.update(layout="title_value", value_font="small", text_font="x")
+    hass.states.async_set("sensor.h", "48")
+    title, value = regions(hass, options)
+    assert (title["font"], value["font"]) == ("matrix-light6", "matrix-chunky8")

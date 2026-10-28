@@ -32,6 +32,9 @@ const OVERLAYS = ["clear", "snow", "rain", "drizzle", "storm", "thunder", "frost
 const BUILTIN_APPS = ["Time", "Date", "Temperature", "Humidity", "Battery"];
 // Layouts of a simple app on a TC002 (AWTRIX NG), drawn on all 52 × 16 LEDs.
 const LAYOUTS = ["value", "title_value", "value_bar", "two_lines"];
+// Fonts a layout offers, all legible on the TC002; the first is the default.
+const VALUE_FONTS = ["matrix-chunky8", "matrix-light8", "matrix-chunky8x6", "matrix-light8x6"];
+const TEXT_FONTS = ["matrix-light6", "matrix-chunky6"];
 
 /** What drawMatrix needs from a rendered page: its grid and its icons. */
 function drawn(rendered) {
@@ -1011,6 +1014,8 @@ class AwtrixStudioPanel extends HTMLElement {
         separator: typeof d.separator === "string" ? d.separator : " ",
         icon: d.icon || "",
         layout: d.layout || "",
+        value_font: d.value_font || VALUE_FONTS[0],
+        text_font: d.text_font || TEXT_FONTS[0],
         progress: d.progress ?? false,
         progress_entity: d.progress_entity || "",
         progress_min: d.progress_min ?? 0,
@@ -1187,7 +1192,7 @@ class AwtrixStudioPanel extends HTMLElement {
       this._syncSegment();
       const [first, ...next] = f.segments.map((s) => this._segmentPayload(s));
       return { mode: "simple", app_name: f.app_name, ...first, segments: next, separator: f.separator, icon: f.icon,
-        layout: f.layout, ...this._progressPayload(), display: this._displayPayload() };
+        layout: f.layout, value_font: f.value_font, text_font: f.text_font, ...this._progressPayload(), display: this._displayPayload() };
     }
     if (kind === "app") {
       return { mode: "template", app_name: f.app_name, template: f.template, page_interval: numberOrEmpty(f.page_interval),
@@ -1489,7 +1494,7 @@ class AwtrixStudioPanel extends HTMLElement {
     }
 
     if (kind === "app") {
-      box.append(this._layoutField(), this._segmentsSection(), this._iconField());
+      box.append(this._layoutField(), this._fontFields(), this._segmentsSection(), this._iconField());
       if (f.segments.length > 1 && !f.layout) {
         box.append(this._field("separator", this.t("separator"), this._input("separator", "text", { maxlength: 8, spellcheck: "false" }),
           this.t("separator_help")));
@@ -1525,6 +1530,23 @@ class AwtrixStudioPanel extends HTMLElement {
       ...["", ...LAYOUTS].map((v) => h("option", { value: v }, this.t(`layout_${v || "line"}`))));
     select.value = f.layout;
     return this._field("layout", this.t("layout"), select, this.t(`layout_${f.layout || "line"}_help`), true);
+  }
+
+  /** The fonts of a layout: the value's, and the title's or the lines'. */
+  _fontFields() {
+    const f = this._form;
+    if (!f.layout) return null;
+    const select = (key, fonts) => {
+      const control = h("select", { id: `f-${key}`, onChange: (e) => { f[key] = e.target.value; this._schedulePreview(); } },
+        ...fonts.map((font) => h("option", { value: font }, this.t(`font_${font}`))));
+      control.value = f[key];
+      return control;
+    };
+    const text = f.layout === "title_value" || f.layout === "two_lines";
+    return h("div", { class: "fields wide" },
+      this._field("value_font", this.t("value_font"), select("value_font", VALUE_FONTS),
+        this.t(f.layout === "two_lines" ? "value_font_alone_help" : "value_font_help")),
+      text ? this._field("text_font", this.t(f.layout === "two_lines" ? "lines_font" : "title_font"), select("text_font", TEXT_FONTS)) : null);
   }
 
   _setLayout(value, select) {

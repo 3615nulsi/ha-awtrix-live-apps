@@ -42,6 +42,8 @@ from .const import (
     CONF_LAYOUT,
     CONF_MODE,
     CONF_TEMPLATE,
+    CONF_TEXT_FONT,
+    CONF_VALUE_FONT,
     FIRMWARE_AWTRIX_NG,
     INDICATORS,
     MODE_SIMPLE,
@@ -305,7 +307,8 @@ def plan_import(  # noqa: PLR0912, PLR0915
         data.pop("firmware", None)
         if data.get(CONF_LAYOUT) and firmware != FIRMWARE_AWTRIX_NG:
             # Layouts are for AWTRIX NG on a TC002: elsewhere, one line.
-            data.pop(CONF_LAYOUT)
+            for key in (CONF_LAYOUT, CONF_VALUE_FONT, CONF_TEXT_FONT):
+                data.pop(key, None)
             plan.warnings.append("layout_dropped")
         if is_app:
             data[CONF_APP_NAME] = target

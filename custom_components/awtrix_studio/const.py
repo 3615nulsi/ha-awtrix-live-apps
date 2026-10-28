@@ -132,3 +132,15 @@ LAYOUT_TITLE_VALUE: Final = "title_value"
 LAYOUT_VALUE_BAR: Final = "value_bar"
 LAYOUT_TWO_LINES: Final = "two_lines"
 LAYOUTS: Final = (LAYOUT_VALUE, LAYOUT_TITLE_VALUE, LAYOUT_VALUE_BAR, LAYOUT_TWO_LINES)
+# Fonts a layout offers, all easy to read on the TC002: 8-pixel fonts for the
+# value (the "8x6" ones are wider, for short values), 6-pixel fonts for the
+# title and the two lines. The first of each is the default.
+CONF_VALUE_FONT: Final = "value_font"
+CONF_TEXT_FONT: Final = "text_font"
+VALUE_FONTS: Final = (
+    "matrix-chunky8",
+    "matrix-light8",
+    "matrix-chunky8x6",
+    "matrix-light8x6",
+)
+TEXT_FONTS: Final = ("matrix-light6", "matrix-chunky6")
